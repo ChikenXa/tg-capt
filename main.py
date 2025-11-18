@@ -2,7 +2,7 @@ import os
 import logging
 import asyncio
 from datetime import datetime, timedelta
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, ContextTypes
 from telegram import Update
 from flask import Flask
 import threading
@@ -30,7 +30,6 @@ logger = logging.getLogger(__name__)
 # Получение токена из переменных окружения
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
-# Проверка наличия токена
 if not BOT_TOKEN:
     logging.error("❌ BOT_TOKEN не найден в переменных окружения!")
     exit(1)
@@ -42,14 +41,144 @@ root_users = set()
 ADMIN_PASSWORD = "24680"
 ROOT_PASSWORD = "1508"
 
-# Для ожидания паролей в ЛС
-waiting_for_password = {}  # {user_id: 'admin' или 'root'}
+async def delete_message_later(message, delay=3):
+    """Удалить сообщение через указанное время"""
+    await asyncio.sleep(delay)
+    try:
+        await message.delete()
+    except:
+        pass
 
-# Московское время (UTC+3)
-MOSCOW_UTC_OFFSET = 3
+async def admin_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Вход как админ"""
+    try:
+        if not context.args:
+            msg = await update.message.reply_text("🔐 *Введите пароль:* `/alogin пароль`", parse_mode='Markdown')
+            await delete_message_later(msg)
+            return
+        
+        password = context.args[0]
+        user = update.effective_user
+        
+        # Удаляем сообщение с паролем через 3 секунды
+        await delete_message_later(update.message)
+        
+        if password == ADMIN_PASSWORD:
+            admins.add(user.id)
+            msg = await update.message.reply_text(
+                f"✅ *Добро пожаловать в админ-панель, {user.first_name}!*",
+                parse_mode='Markdown'
+            )
+            logger.info(f"👤 Пользователь {user.first_name} ({user.id}) вошел как админ")
+        else:
+            msg = await update.message.reply_text("❌ *Неверный пароль!*", parse_mode='Markdown')
+            await delete_message_later(msg)
+            
+    except Exception as e:
+        msg = await update.message.reply_text("❌ *Ошибка входа!*", parse_mode='Markdown')
+        await delete_message_later(msg)
 
-def get_moscow_time():
-    return datetime.utcnow() + timedelta(hours=MOSCOW_UTC_OFFSET)
+async def root_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Вход как root"""
+    try:
+        if not context.args:
+            msg = await update.message.reply_text("👑 *Введите пароль:* `/root пароль`", parse_mode='Markdown')
+            await delete_message_later(msg)
+            return
+        
+        password = context.args[0]
+        user = update.effective_user
+        
+        # Удаляем сообщение с паролем через 3 секунды
+        await delete_message_later(update.message)
+        
+        if password == ROOT_PASSWORD:
+            root_users.add(user.id)
+            admins.add(user.id)
+            msg = await update.message.reply_text(
+                f"👑 *Добро пожаловать в root-панель, {user.first_name}!*",
+                parse_mode='Markdown'
+            )
+            logger.info(f"👑 Пользователь {user.first_name} ({user.id}) вошел как root")
+        else:
+            msg = await update.message.reply_text("❌ *Неверный пароль!*", parse_mode='Markdown')
+            await delete_message_later(msg)
+            
+    except Exception as e:
+        msg = await update.message.reply_text("❌ *Ошибка входа!*", parse_mode='Markdown')
+        await delete_message_later(msg)
+
+async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Добавление админа по user_id"""
+    try:
+        user = update.effective_user
+        
+        if not is_root(user.id):
+            await update.message.reply_text("❌ *Только root может добавлять админов!*", parse_mode='Markdown')
+            return
+            
+        if not context.args:
+            await update.message.reply_text("❌ *Укажи user_id:* `/addadmin 123456789`", parse_mode='Markdown')
+            return
+        
+        try:
+            target_user_id = int(context.args[0])
+        except ValueError:
+            await update.message.reply_text("❌ *user_id должен быть числом!*", parse_mode='Markdown')
+            return
+        
+        if target_user_id in root_users:
+            await update.message.reply_text("❌ *Нельзя добавить root пользователя как админа!*", parse_mode='Markdown')
+            return
+        
+        admins.add(target_user_id)
+        
+        await update.message.reply_text(
+            f"✅ *Пользователь {target_user_id} добавлен в админы!*",
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        await update.message.reply_text("❌ *Ошибка добавления админа!*", parse_mode='Markdown')
+
+async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Удаление админа по user_id"""
+    try:
+        user = update.effective_user
+        
+        if not is_root(user.id):
+            await update.message.reply_text("❌ *Только root может удалять админов!*", parse_mode='Markdown')
+            return
+            
+        if not context.args:
+            await update.message.reply_text("❌ *Укажи user_id:* `/removeadmin 123456789`", parse_mode='Markdown')
+            return
+        
+        try:
+            target_user_id = int(context.args[0])
+        except ValueError:
+            await update.message.reply_text("❌ *user_id должен быть числом!*", parse_mode='Markdown')
+            return
+        
+        if target_user_id in root_users:
+            await update.message.reply_text("❌ *Нельзя удалить root пользователя!*", parse_mode='Markdown')
+            return
+        
+        if target_user_id not in admins:
+            await update.message.reply_text(f"❌ *Пользователь {target_user_id} не является админом!*", parse_mode='Markdown')
+            return
+        
+        admins.remove(target_user_id)
+        
+        await update.message.reply_text(
+            f"🗑️ *Пользователь {target_user_id} удален из админов!*",
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        await update.message.reply_text("❌ *Ошибка удаления админа!*", parse_mode='Markdown')
+
+# ... остальные функции (start, commands, create_event, go_command, ex_command, kapt_command, kick_command, delete_event_command) остаются без изменений ...
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -86,258 +215,18 @@ async def commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if is_admin or is_root:
         text += "🛠️ *Админ команды:*\n"
-        text += "• `/alogin` - войти как админ\n"
+        text += "• `/alogin пароль` - войти как админ\n"
         text += "• `/kick @username код` - кикнуть игрока\n"
         text += "• `/del код` - удалить капт\n\n"
     
     if is_root:
         text += "👑 *Root команды:*\n"
-        text += "• `/root` - войти как root\n"
-        text += "• `/addadmin @username` - добавить админа\n"
-        text += "• `/removeadmin @username` - удалить админа\n"
+        text += "• `/root пароль` - войти как root\n"
+        text += "• `/addadmin user_id` - добавить админа\n"
+        text += "• `/removeadmin user_id` - удалить админа\n"
         text += "• `/listadmins` - список админов\n\n"
     
     await update.message.reply_text(text, parse_mode='Markdown')
-
-async def admin_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Запрос пароля админа в ЛС"""
-    user = update.effective_user
-    
-    # Удаляем сообщение с командой
-    try:
-        await update.message.delete()
-    except:
-        pass
-    
-    # Запрашиваем пароль в ЛС
-    waiting_for_password[user.id] = 'admin'
-    await context.bot.send_message(
-        chat_id=user.id,
-        text="🔐 *Введите пароль админа:*",
-        parse_mode='Markdown'
-    )
-
-async def root_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Запрос root пароля в ЛС"""
-    user = update.effective_user
-    
-    # Удаляем сообщение с командой
-    try:
-        await update.message.delete()
-    except:
-        pass
-    
-    # Запрашиваем пароль в ЛС
-    waiting_for_password[user.id] = 'root'
-    await context.bot.send_message(
-        chat_id=user.id,
-        text="👑 *Введите root пароль:*",
-        parse_mode='Markdown'
-    )
-
-async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка паролей в ЛС"""
-    user = update.effective_user
-    password = update.message.text
-    
-    if user.id not in waiting_for_password:
-        return
-    
-    auth_type = waiting_for_password[user.id]
-    
-    # Удаляем сообщение с паролем
-    try:
-        await update.message.delete()
-    except:
-        pass
-    
-    if auth_type == 'admin':
-        if password == ADMIN_PASSWORD:
-            admins.add(user.id)
-            await update.message.reply_text(
-                f"✅ *Добро пожаловать в админ-панель, {user.first_name}!*",
-                parse_mode='Markdown'
-            )
-            logger.info(f"👤 Пользователь {user.first_name} ({user.id}) вошел как админ")
-        else:
-            await update.message.reply_text("❌ *Неверный пароль!*", parse_mode='Markdown')
-    
-    elif auth_type == 'root':
-        if password == ROOT_PASSWORD:
-            root_users.add(user.id)
-            admins.add(user.id)
-            await update.message.reply_text(
-                f"👑 *Добро пожаловать в root-панель, {user.first_name}!*",
-                parse_mode='Markdown'
-            )
-            logger.info(f"👑 Пользователь {user.first_name} ({user.id}) вошел как root")
-        else:
-            await update.message.reply_text("❌ *Неверный пароль!*", parse_mode='Markdown')
-    
-    # Удаляем из ожидания
-    del waiting_for_password[user.id]
-
-async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Добавление админа по @username"""
-    try:
-        user = update.effective_user
-        
-        if not is_root(user.id):
-            await update.message.reply_text("❌ *Только root может добавлять админов!*", parse_mode='Markdown')
-            return
-            
-        if not context.args:
-            await update.message.reply_text("❌ *Укажи @username пользователя*", parse_mode='Markdown')
-            return
-        
-        username_input = context.args[0].replace('@', '')
-        
-        # В реальном боте нужно найти user_id по username
-        # Покажем инструкцию как найти user_id
-        await update.message.reply_text(
-            f"🔍 *Для добавления админа нужно найти user_id*\n\n"
-            f"Username: @{username_input}\n\n"
-            f"*Как найти user_id:*\n"
-            f"1. Попросите пользователя написать боту\n"
-            f"2. Посмотрите user_id в логах\n"
-            f"3. Используйте команду: `/addadmin_userid 123456789`",
-            parse_mode='Markdown'
-        )
-        
-    except Exception as e:
-        await update.message.reply_text("❌ *Ошибка добавления админа!*", parse_mode='Markdown')
-
-async def add_admin_userid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Добавление админа по user_id (скрытая команда)"""
-    try:
-        user = update.effective_user
-        
-        if not is_root(user.id):
-            await update.message.reply_text("❌ *Только root может добавлять админов!*", parse_mode='Markdown')
-            return
-            
-        if not context.args:
-            await update.message.reply_text("❌ *Укажи user_id пользователя*", parse_mode='Markdown')
-            return
-        
-        try:
-            target_user_id = int(context.args[0])
-        except ValueError:
-            await update.message.reply_text("❌ *user_id должен быть числом!*", parse_mode='Markdown')
-            return
-        
-        if target_user_id in root_users:
-            await update.message.reply_text("❌ *Нельзя добавить root пользователя как админа!*", parse_mode='Markdown')
-            return
-        
-        admins.add(target_user_id)
-        
-        await update.message.reply_text(
-            f"✅ *Пользователь {target_user_id} добавлен в админы!*",
-            parse_mode='Markdown'
-        )
-        
-        logger.info(f"👑 Root {user.first_name} добавил админа {target_user_id}")
-        
-    except Exception as e:
-        await update.message.reply_text("❌ *Ошибка добавления админа!*", parse_mode='Markdown')
-
-async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Удаление админа по @username"""
-    try:
-        user = update.effective_user
-        
-        if not is_root(user.id):
-            await update.message.reply_text("❌ *Только root может удалять админов!*", parse_mode='Markdown')
-            return
-            
-        if not context.args:
-            await update.message.reply_text("❌ *Укажи @username админа*", parse_mode='Markdown')
-            return
-        
-        username_input = context.args[0].replace('@', '')
-        
-        await update.message.reply_text(
-            f"🔍 *Для удаления админа нужно знать его user_id*\n\n"
-            f"Используйте команду: `/removeadmin_userid 123456789`\n\n"
-            f"*Список текущих админов:*\n"
-            f"{await get_admins_list()}",
-            parse_mode='Markdown'
-        )
-        
-    except Exception as e:
-        await update.message.reply_text("❌ *Ошибка удаления админа!*", parse_mode='Markdown')
-
-async def remove_admin_userid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Удаление админа по user_id (скрытая команда)"""
-    try:
-        user = update.effective_user
-        
-        if not is_root(user.id):
-            await update.message.reply_text("❌ *Только root может удалять админов!*", parse_mode='Markdown')
-            return
-            
-        if not context.args:
-            await update.message.reply_text("❌ *Укажи user_id админа*", parse_mode='Markdown')
-            return
-        
-        try:
-            target_user_id = int(context.args[0])
-        except ValueError:
-            await update.message.reply_text("❌ *user_id должен быть числом!*", parse_mode='Markdown')
-            return
-        
-        if target_user_id in root_users:
-            await update.message.reply_text("❌ *Нельзя удалить root пользователя!*", parse_mode='Markdown')
-            return
-        
-        if target_user_id not in admins:
-            await update.message.reply_text(f"❌ *Пользователь {target_user_id} не является админом!*", parse_mode='Markdown')
-            return
-        
-        admins.remove(target_user_id)
-        
-        await update.message.reply_text(
-            f"🗑️ *Пользователь {target_user_id} удален из админов!*",
-            parse_mode='Markdown'
-        )
-        
-        logger.info(f"👑 Root {user.first_name} удалил админа {target_user_id}")
-        
-    except Exception as e:
-        await update.message.reply_text("❌ *Ошибка удаления админа!*", parse_mode='Markdown')
-
-async def get_admins_list():
-    """Получить список админов"""
-    if not admins:
-        return "📭 Админов нет"
-    
-    text = ""
-    for i, admin_id in enumerate(admins, 1):
-        is_root_user = "👑 " if admin_id in root_users else ""
-        text += f"{i}. {is_root_user}`{admin_id}`\n"
-    
-    return text
-
-async def list_admins(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Список админов"""
-    try:
-        user = update.effective_user
-        
-        if not is_root(user.id):
-            await update.message.reply_text("❌ *Только root может просматривать список админов!*", parse_mode='Markdown')
-            return
-        
-        text = "👥 *СПИСОК АДМИНОВ*\n\n"
-        text += await get_admins_list()
-        text += f"\n👑 *Root пользователей:* {len(root_users)}"
-        
-        await update.message.reply_text(text, parse_mode='Markdown')
-        
-    except Exception as e:
-        await update.message.reply_text("❌ *Ошибка!*", parse_mode='Markdown')
-
-# ... остальные функции (create_event, go_command, ex_command, kapt_command, kick_command, delete_event_command) остаются без изменений ...
 
 async def create_event(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -397,11 +286,10 @@ async def create_event(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         message = await update.message.reply_text(event_text, parse_mode='Markdown')
         
-        # Пытаемся закрепить сообщение
         try:
             await message.pin()
-        except Exception as e:
-            logger.warning(f"Не удалось закрепить сообщение: {e}")
+        except:
+            pass
         
     except Exception as e:
         await update.message.reply_text("❌ *Ошибка создания капта!*", parse_mode='Markdown')
@@ -430,7 +318,6 @@ async def go_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⚠️ *Ты уже в капте!*", parse_mode='Markdown')
             return
         
-        # Получаем username или first_name если username нет
         if user.username:
             display_name = f"@{user.username}"
         else:
@@ -508,7 +395,6 @@ async def kapt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for code, event in events.items():
             free_slots = int(event['slots']) - len(event['participants'])
             
-            # Формируем список участников с никами
             participants_list = ""
             if event['participants']:
                 participants_list = "\n👥 *Участники:*\n"
@@ -537,7 +423,6 @@ async def kapt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ *Ошибка!*", parse_mode='Markdown')
 
 async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Кик участника по нику"""
     try:
         user = update.effective_user
         
@@ -558,15 +443,11 @@ async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         event = events[event_code]
         
-        # Ищем участника по username (с @ или без)
         participant_index = None
         removed_participant = None
         
         for i, participant in enumerate(event['participants']):
-            # Убираем @ из ввода для сравнения
             clean_input = username_input.replace('@', '').lower()
-            
-            # Проверяем username (без @) или display_name (с @)
             participant_username = participant['username'] or ""
             participant_display = participant['display_name'].replace('@', '').lower()
             
@@ -579,7 +460,6 @@ async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ *Участник {username_input} не найден в капте {event_code}!*", parse_mode='Markdown')
             return
         
-        # Удаляем участника
         event['participants'].pop(participant_index)
         free_slots = int(event['slots']) - len(event['participants'])
         
@@ -592,13 +472,10 @@ async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
         
-        logger.info(f"👤 Админ {user.first_name} кикнул {removed_participant['display_name']} из капта {event_code}")
-        
     except Exception as e:
         await update.message.reply_text("❌ *Ошибка кика!*", parse_mode='Markdown')
 
 async def delete_event_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Удаление капта"""
     try:
         user = update.effective_user
         
@@ -616,15 +493,12 @@ async def delete_event_command(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_text("❌ *Капт не найден!*", parse_mode='Markdown')
             return
         
-        # Удаляем капт
         del events[event_code]
         
         await update.message.reply_text(
             f"🗑️ *Капт {event_code} удален!*",
             parse_mode='Markdown'
         )
-        
-        logger.info(f"👤 Админ {user.first_name} удалил капт {event_code}")
         
     except Exception as e:
         await update.message.reply_text("❌ *Ошибка удаления!*", parse_mode='Markdown')
@@ -638,16 +512,12 @@ def is_root(user_id):
 def main():
     application = Application.builder().token(BOT_TOKEN).build()
     
-    # Добавляем хэндлеры
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("commands", commands))
     application.add_handler(CommandHandler("alogin", admin_login))
     application.add_handler(CommandHandler("root", root_login))
     application.add_handler(CommandHandler("addadmin", add_admin))
-    application.add_handler(CommandHandler("addadmin_userid", add_admin_userid))
     application.add_handler(CommandHandler("removeadmin", remove_admin))
-    application.add_handler(CommandHandler("removeadmin_userid", remove_admin_userid))
-    application.add_handler(CommandHandler("listadmins", list_admins))
     application.add_handler(CommandHandler("create", create_event))
     application.add_handler(CommandHandler("go", go_command))
     application.add_handler(CommandHandler("ex", ex_command))
@@ -655,14 +525,11 @@ def main():
     application.add_handler(CommandHandler("kick", kick_command))
     application.add_handler(CommandHandler("del", delete_event_command))
     
-    # Обработчик паролей в ЛС
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_password))
-    
     print("🎮 CAPT BOT запущен!")
     print("🛠️ Создатель: ChikenXa")
     print("🔐 Пароль админа: 24680")
     print("👑 Пароль root: 1508")
-    print("💬 Пароли теперь запрашиваются в ЛС!")
+    print("⏰ Сообщения с паролями удаляются через 3 секунды")
     
     application.run_polling()
 
