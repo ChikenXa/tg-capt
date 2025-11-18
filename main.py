@@ -115,8 +115,8 @@ async def commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_root:
         text += "👑 *Root команды:*\n"
         text += "• `/root пароль` - войти как root\n"
-        text += "• `/addadmin user_id` - добавить админа\n"
-        text += "• `/removeadmin user_id` - удалить админа\n"
+        text += "• `/addadmin @username` - добавить админа\n"
+        text += "• `/removeadmin @username` - удалить админа\n"
         text += "• `/listadmins` - список админов\n\n"
     
     message = await update.message.reply_text(text, parse_mode='Markdown')
@@ -187,96 +187,33 @@ async def root_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_messages.append((message.chat_id, message.message_id))
 
 async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Добавление админа по user_id (только для root)"""
+    """Добавление админа (только для root)"""
     try:
         user = update.effective_user
         
         if not is_root(user.id):
-            message = await update.message.reply_text("❌ *Только root может добавлять админов!*", parse_mode='Markdown')
-            bot_messages.append((message.chat_id, message.message_id))
+            await update.message.reply_text("❌ *Только root может добавлять админов!*", parse_mode='Markdown')
             return
             
         if not context.args:
-            message = await update.message.reply_text("❌ *Укажи user_id пользователя*", parse_mode='Markdown')
-            bot_messages.append((message.chat_id, message.message_id))
+            await update.message.reply_text("❌ *Укажи username пользователя*", parse_mode='Markdown')
             return
         
-        try:
-            target_user_id = int(context.args[0])
-        except ValueError:
-            message = await update.message.reply_text("❌ *user_id должен быть числом!*", parse_mode='Markdown')
-            bot_messages.append((message.chat_id, message.message_id))
-            return
+        target_username = context.args[0].replace('@', '')
         
-        # Проверяем, не root ли это
-        if target_user_id in root_users:
-            message = await update.message.reply_text("❌ *Нельзя добавить root пользователя как админа!*", parse_mode='Markdown')
-            bot_messages.append((message.chat_id, message.message_id))
-            return
-        
-        # Добавляем админа
-        admins.add(target_user_id)
+        # В реальном боте нужно было бы искать пользователя по username в базе данных
+        # Здесь просто сохраняем username для демонстрации
+        # В реальности нужно хранить user_id админов
         
         message = await update.message.reply_text(
-            f"✅ *Пользователь {target_user_id} добавлен в админы!*\n\n"
-            f"Теперь он может использовать админские команды.",
+            f"⚠️ *Функция добавления админа требует доработки*\n"
+            f"Нужен user_id пользователя {target_username}",
             parse_mode='Markdown'
         )
         bot_messages.append((message.chat_id, message.message_id))
-        
-        logger.info(f"👑 Root {user.first_name} добавил админа {target_user_id}")
         
     except Exception as e:
         message = await update.message.reply_text("❌ *Ошибка добавления админа!*", parse_mode='Markdown')
-        bot_messages.append((message.chat_id, message.message_id))
-
-async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Удаление админа по user_id (только для root)"""
-    try:
-        user = update.effective_user
-        
-        if not is_root(user.id):
-            message = await update.message.reply_text("❌ *Только root может удалять админов!*", parse_mode='Markdown')
-            bot_messages.append((message.chat_id, message.message_id))
-            return
-            
-        if not context.args:
-            message = await update.message.reply_text("❌ *Укажи user_id админа*", parse_mode='Markdown')
-            bot_messages.append((message.chat_id, message.message_id))
-            return
-        
-        try:
-            target_user_id = int(context.args[0])
-        except ValueError:
-            message = await update.message.reply_text("❌ *user_id должен быть числом!*", parse_mode='Markdown')
-            bot_messages.append((message.chat_id, message.message_id))
-            return
-        
-        # Проверяем, не пытаемся ли удалить root
-        if target_user_id in root_users:
-            message = await update.message.reply_text("❌ *Нельзя удалить root пользователя!*", parse_mode='Markdown')
-            bot_messages.append((message.chat_id, message.message_id))
-            return
-        
-        # Проверяем, есть ли такой админ
-        if target_user_id not in admins:
-            message = await update.message.reply_text(f"❌ *Пользователь {target_user_id} не является админом!*", parse_mode='Markdown')
-            bot_messages.append((message.chat_id, message.message_id))
-            return
-        
-        # Удаляем админа
-        admins.remove(target_user_id)
-        
-        message = await update.message.reply_text(
-            f"🗑️ *Пользователь {target_user_id} удален из админов!*",
-            parse_mode='Markdown'
-        )
-        bot_messages.append((message.chat_id, message.message_id))
-        
-        logger.info(f"👑 Root {user.first_name} удалил админа {target_user_id}")
-        
-    except Exception as e:
-        message = await update.message.reply_text("❌ *Ошибка удаления админа!*", parse_mode='Markdown')
         bot_messages.append((message.chat_id, message.message_id))
 
 async def list_admins(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -285,21 +222,19 @@ async def list_admins(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
         
         if not is_root(user.id):
-            message = await update.message.reply_text("❌ *Только root может просматривать список админов!*", parse_mode='Markdown')
+            await update.message.reply_text("❌ *Только root может просматривать список админов!*", parse_mode='Markdown')
+            return
+        
+        if not admins:
+            message = await update.message.reply_text("📭 *Список админов пуст*", parse_mode='Markdown')
             bot_messages.append((message.chat_id, message.message_id))
             return
         
         text = "👥 *СПИСОК АДМИНОВ*\n\n"
-        
-        if not admins:
-            text += "📭 *Админов нет*"
-        else:
-            text += f"• Всего админов: {len(admins)}\n\n"
-            for i, admin_id in enumerate(admins, 1):
-                is_root_user = "👑 " if admin_id in root_users else ""
-                text += f"{i}. {is_root_user}`{admin_id}`\n"
-        
-        text += f"\n👑 *Root пользователей:* {len(root_users)}"
+        # В реальном боте нужно хранить имена админов
+        text += f"• Админов: {len(admins)}\n"
+        text += f"• Root пользователей: {len(root_users)}\n\n"
+        text += "_Для полного списка нужна база данных_"
         
         message = await update.message.reply_text(text, parse_mode='Markdown')
         bot_messages.append((message.chat_id, message.message_id))
@@ -307,8 +242,6 @@ async def list_admins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         message = await update.message.reply_text("❌ *Ошибка!*", parse_mode='Markdown')
         bot_messages.append((message.chat_id, message.message_id))
-
-# ... остальные функции (create_event, go_command, ex_command, kapt_command, kick_command, delete_event_command) остаются без изменений ...
 
 async def create_event(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -646,7 +579,6 @@ def main():
     application.add_handler(CommandHandler("alogin", admin_login))
     application.add_handler(CommandHandler("root", root_login))
     application.add_handler(CommandHandler("addadmin", add_admin))
-    application.add_handler(CommandHandler("removeadmin", remove_admin))
     application.add_handler(CommandHandler("listadmins", list_admins))
     application.add_handler(CommandHandler("create", create_event))
     application.add_handler(CommandHandler("go", go_command))
