@@ -85,6 +85,7 @@ async def admin_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Вход как админ - сообщения НЕ отслеживаются"""
     try:
         if not context.args:
+            # Это сообщение НЕ добавляется в bot_messages
             await update.message.reply_text("🔐 *Введите пароль:* `/alogin пароль`", parse_mode='Markdown')
             return
         
@@ -93,20 +94,24 @@ async def admin_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if password == ADMIN_PASSWORD:
             admins.add(user.id)
+            # Это сообщение НЕ добавляется в bot_messages
             await update.message.reply_text(
                 f"✅ *Добро пожаловать в админ-панель, {user.first_name}!*",
                 parse_mode='Markdown'
             )
         else:
+            # Это сообщение НЕ добавляется в bot_messages
             await update.message.reply_text("❌ *Неверный пароль!*", parse_mode='Markdown')
             
     except Exception as e:
+        # Это сообщение НЕ добавляется в bot_messages
         await update.message.reply_text("❌ *Ошибка входа!*", parse_mode='Markdown')
 
 async def root_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Вход как root - сообщения НЕ отслеживаются"""
     try:
         if not context.args:
+            # Это сообщение НЕ добавляется в bot_messages
             await update.message.reply_text("👑 *Введите пароль:* `/root пароль`", parse_mode='Markdown')
             return
         
@@ -116,14 +121,17 @@ async def root_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if password == ROOT_PASSWORD:
             root_users.add(user.id)
             admins.add(user.id)
+            # Это сообщение НЕ добавляется в bot_messages
             await update.message.reply_text(
                 f"👑 *Добро пожаловать в root-панель, {user.first_name}!*",
                 parse_mode='Markdown'
             )
         else:
+            # Это сообщение НЕ добавляется в bot_messages
             await update.message.reply_text("❌ *Неверный пароль!*", parse_mode='Markdown')
             
     except Exception as e:
+        # Это сообщение НЕ добавляется в bot_messages
         await update.message.reply_text("❌ *Ошибка входа!*", parse_mode='Markdown')
 
 # Все остальные функции остаются с отслеживанием сообщений
