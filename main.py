@@ -41,6 +41,7 @@ ROOT_PASSWORD = "1508"
 waiting_for_password = {}
 event_messages = {}  # {event_code: (chat_id, message_id)}
 bot_messages = []  # [(chat_id, message_id, timestamp)] - для отслеживания сообщений бота
+daily_status_sent = {}  # {chat_id: date} - для отслеживания отправки ежедневного статуса
 
 # Московское время постоянно UTC+3 (без летнего времени)
 MOSCOW_UTC_OFFSET = 3
@@ -201,19 +202,19 @@ async def send_event_reminders(application):
     except Exception as e:
         logger.error(f"❌ Ошибка в функции напоминаний: {e}")
 
-async def send_hourly_kapt_status(application):
-    """Каждый час с 14:00 до 23:00 отправляем статус каптов"""
+async def send_daily_kapt_status(application):
+    """Отправляем статус каптов один раз в день в 14:00 по МСК и закрепляем"""
     try:
         current_time = get_moscow_time()
         current_hour = current_time.hour
         current_minute = current_time.minute
+        current_date = current_time.strftime("%Y-%m-%d")
         
-        # Выводим отладочную информацию
-        logger.info(f"🕐 Проверка ежечасного статуса: {current_hour:02d}:{current_minute:02d} МСК")
+        logger.info(f"🕐 Проверка ежедневного статуса: {current_hour:02d}:{current_minute:02d} МСК")
         
-        # Проверяем время: с 14:00 до 23:00 каждый час в :00 минут
-        if 14 <= current_hour <= 23 and current_minute == 0:
-            logger.info(f"✅ Отправка ежечасного статуса каптов в {current_hour:02d}:00 МСК")
+        # Проверяем время: только в 14:00 по МСК
+        if current_hour == 14 and current_minute == 0:
+            logger.info("✅ Отправка ежедневного статуса каптов в 14:00 МСК")
             
             # Получаем список всех уникальных чатов где есть капты
             unique_chats = set()
@@ -222,34 +223,47 @@ async def send_hourly_kapt_status(application):
             
             for chat_id in unique_chats:
                 try:
+                    # Проверяем, не отправляли ли уже сегодня статус в этот чат
+                    if daily_status_sent.get(chat_id) == current_date:
+                        logger.info(f"⏭️ Статус уже отправлен сегодня в чат {chat_id}")
+                        continue
+                    
                     # Используем функцию kapt_command для формирования текста
                     status_text = await generate_kapt_text()
                     
                     if status_text:
                         message = await application.bot.send_message(
                             chat_id=chat_id,
-                            text=f"🕐 *ЕЖЕЧАСНЫЙ СТАТУС КАПТОВ* 🕐\n\n{status_text}",
+                            text=f"🕐 *ЕЖЕДНЕВНЫЙ СТАТУС КАПТОВ* 🕐\n\n{status_text}",
                             parse_mode='Markdown'
                         )
+                        # ЗАКРЕПЛЯЕМ сообщение со статусом
+                        await pin_event_message(application, chat_id, message.message_id)
+                        
                         # Сохраняем ID сообщения для последующего удаления
                         bot_messages.append((message.chat_id, message.message_id, current_time.timestamp()))
-                        logger.info(f"✅ Ежечасный статус отправлен в чат {chat_id}")
+                        
+                        # Отмечаем, что статус отправлен сегодня
+                        daily_status_sent[chat_id] = current_date
+                        
+                        logger.info(f"✅ Ежедневный статус отправлен и закреплен в чат {chat_id}")
                     else:
                         message = await application.bot.send_message(
                             chat_id=chat_id,
-                            text="🕐 *ЕЖЕЧАСНЫЙ СТАТУС КАПТОВ* 🕐\n\n📭 *Активных каптов нет*",
+                            text="🕐 *ЕЖЕДНЕВНЫЙ СТАТУС КАПТОВ* 🕐\n\n📭 *Активных каптов нет*",
                             parse_mode='Markdown'
                         )
                         bot_messages.append((message.chat_id, message.message_id, current_time.timestamp()))
+                        daily_status_sent[chat_id] = current_date
                         logger.info(f"✅ Статус 'нет каптов' отправлен в чат {chat_id}")
                         
                 except Exception as e:
-                    logger.error(f"❌ Ошибка отправки ежечасного статуса в чат {chat_id}: {e}")
+                    logger.error(f"❌ Ошибка отправки ежедневного статуса в чат {chat_id}: {e}")
         else:
-            logger.info(f"⏰ Не время для статуса: {current_hour:02d}:{current_minute:02d} МСК")
+            logger.info(f"⏰ Не время для ежедневного статуса: {current_hour:02d}:{current_minute:02d} МСК")
                     
     except Exception as e:
-        logger.error(f"❌ Ошибка отправки ежечасного статуса: {e}")
+        logger.error(f"❌ Ошибка отправки ежедневного статуса: {e}")
 
 async def generate_kapt_text():
     """Генерирует текст для команды /kapt"""
@@ -507,8 +521,8 @@ async def scheduled_tasks(application):
             # Напоминания о каптах
             await send_event_reminders(application)
             
-            # Ежечасный статус каптов
-            await send_hourly_kapt_status(application)
+            # Ежедневный статус каптов в 14:00
+            await send_daily_kapt_status(application)
             
             # Спокойной ночи
             await send_good_night(application)
@@ -535,7 +549,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚡ *Быстрый старт:*\n"
         f"`/create 1 Рейд 5 20.11 21:30 Лук Да Защита`\n"
         f"`/go 1` - записаться\n\n"
-        f"🕐 *Авто-статус:* каждый час с 14:00 до 23:00\n\n"
+        f"🕐 *Авто-статус:* каждый день в 14:00 по МСК\n\n"
         f"👨‍💻 _Разработано ChikenXa (Данил)_",
         parse_mode='Markdown'
     )
@@ -568,8 +582,8 @@ async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    is_admin = is_admin(user.id)
-    is_root = is_root(user.id)
+    is_admin_user = is_admin(user.id)
+    is_root_user = is_root(user.id)
     
     text = "📋 *СПИСОК КОМАНД*\n\n"
     text += "👥 *Для всех:*\n"
@@ -585,17 +599,17 @@ async def commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     text += "🕐 *Автоматические функции:*\n"
     text += "• Напоминания за 30 минут до капта\n"
-    text += "• Статус каптов каждый час (14:00-23:00)\n"
+    text += "• Статус каптов каждый день в 14:00 МСК\n"
     text += "• Спокойной ночи в 23:59\n"
     text += "• Очистка в 6:00\n\n"
     
-    if is_admin or is_root:
+    if is_admin_user or is_root_user:
         text += "🛠️ *Админ команды:*\n"
         text += "• `/alogin` - войти как админ\n"
         text += "• `/kick @username код` - кикнуть игрока\n"
         text += "• `/del код` - удалить капт\n\n"
     
-    if is_root:
+    if is_root_user:
         text += "👑 *Root команды:*\n"
         text += "• `/root` - войти как root\n"
         text += "• `/addadmin @username` - добавить админа\n"
@@ -1207,10 +1221,11 @@ def main():
     print("💬 Сообщения каптов обновляются автоматически!")
     print("📌 Сообщения каптов закрепляются!")
     print("🔔 Напоминания за 30 минут до капта!")
-    print("🕐 Ежечасный статус с 14:00 до 23:00!")
+    print("🕐 Ежедневный статус в 14:00 МСК (с закреплением)!")
     print("🌙 Спокойной ночи в 23:59!")
     print("🧹 Очистка сообщений в 6:00!")
     print("🏓 Команда /ping доступна!")
+    print("📋 Команда /commands доступна!")
     print("⏰ Московское время: UTC+3 (постоянно)")
     
     application.run_polling()
