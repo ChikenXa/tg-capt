@@ -17,51 +17,104 @@ def home():
 def run_web():
     app.run(host='0.0.0.0', port=8080)
 
-# Запускаем веб-сервер в отдельном потоке
 threading.Thread(target=run_web, daemon=True).start()
 
-# Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Получение токена из переменных окружения
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-
 if not BOT_TOKEN:
-    logging.error("❌ BOT_TOKEN не найден в переменных окружения!")
+    logging.error("❌ BOT_TOKEN не найден!")
     exit(1)
 
-# Хранилище данных
 events = {}
 admins = set()
 root_users = set()
 ADMIN_PASSWORD = "24680"
 ROOT_PASSWORD = "1508"
 
-async def delete_message_later(message, delay=3):
-    """Удалить сообщение через указанное время"""
-    await asyncio.sleep(delay)
-    try:
-        await message.delete()
-    except:
-        pass
+# Для хранения ID сообщений бота
+bot_messages = []
+
+# Московское время (UTC+3)
+MOSCOW_UTC_OFFSET = 3
+
+def get_moscow_time():
+    """Получаем московское время"""
+    return datetime.utcnow() + timedelta(hours=MOSCOW_UTC_OFFSET)
+
+async def cleanup_bot_messages(application):
+    """Автоочистка сообщений бота в 6:00 по МСК"""
+    while True:
+        try:
+            now = get_moscow_time()
+            
+            # Если сейчас 6:00 утра по МСК
+            if now.hour == 6 and now.minute == 0:
+                logger.info("🕕 Начинаю автоочистку сообщений бота...")
+                
+                # Отправляем сообщение о начале очистки
+                cleanup_msg = await application.bot.send_message(
+                    chat_id=list(events.keys())[0] if events else None,  # Отправляем в первый доступный чат
+                    text="🔄 *Автоочистка сообщений бота*\n\n"
+                         "⏰ *Время:* 6:00 по МСК\n"
+                         "👨‍💻 *Создатель:* ChikenXa\n"
+                         "🗑️ *Удаляю все сообщения бота...*",
+                    parse_mode='Markdown'
+                )
+                
+                deleted_count = 0
+                # Удаляем все сообщения бота
+                for chat_id, message_id in bot_messages:
+                    try:
+                        await application.bot.delete_message(chat_id, message_id)
+                        deleted_count += 1
+                        await asyncio.sleep(0.1)  # Задержка чтобы не превысить лимиты
+                    except Exception as e:
+                        logger.warning(f"Не удалось удалить сообщение {message_id}: {e}")
+                
+                # Очищаем список сообщений
+                bot_messages.clear()
+                
+                # Отправляем сообщение о завершении очистки
+                await application.bot.send_message(
+                    chat_id=cleanup_msg.chat_id,
+                    text=f"✅ *Автоочистка завершена!*\n\n"
+                         f"🗑️ *Удалено сообщений:* {deleted_count}\n"
+                         f"⏰ *Время:* 6:00 по МСК\n"
+                         f"👨‍💻 *Создатель:* ChikenXa\n\n"
+                         f"_Следующая очистка завтра в 6:00_",
+                    parse_mode='Markdown'
+                )
+                
+                # Удаляем сообщение о начале очистки
+                await cleanup_msg.delete()
+                
+                logger.info(f"✅ Автоочистка завершена. Удалено сообщений: {deleted_count}")
+                
+                # Ждем 1 минуту чтобы не запускать несколько раз в 6:00
+                await asyncio.sleep(60)
+            else:
+                # Проверяем каждую минуту
+                await asyncio.sleep(60)
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка в автоочистке: {e}")
+            await asyncio.sleep(60)
 
 async def admin_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Вход как админ"""
     try:
         if not context.args:
             msg = await update.message.reply_text("🔐 *Введите пароль:* `/alogin пароль`", parse_mode='Markdown')
-            await delete_message_later(msg)
+            bot_messages.append((msg.chat_id, msg.message_id))
             return
         
         password = context.args[0]
         user = update.effective_user
-        
-        # Удаляем сообщение с паролем через 3 секунды
-        await delete_message_later(update.message)
         
         if password == ADMIN_PASSWORD:
             admins.add(user.id)
@@ -69,28 +122,25 @@ async def admin_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"✅ *Добро пожаловать в админ-панель, {user.first_name}!*",
                 parse_mode='Markdown'
             )
-            logger.info(f"👤 Пользователь {user.first_name} ({user.id}) вошел как админ")
+            bot_messages.append((msg.chat_id, msg.message_id))
         else:
             msg = await update.message.reply_text("❌ *Неверный пароль!*", parse_mode='Markdown')
-            await delete_message_later(msg)
+            bot_messages.append((msg.chat_id, msg.message_id))
             
     except Exception as e:
         msg = await update.message.reply_text("❌ *Ошибка входа!*", parse_mode='Markdown')
-        await delete_message_later(msg)
+        bot_messages.append((msg.chat_id, msg.message_id))
 
 async def root_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Вход как root"""
     try:
         if not context.args:
             msg = await update.message.reply_text("👑 *Введите пароль:* `/root пароль`", parse_mode='Markdown')
-            await delete_message_later(msg)
+            bot_messages.append((msg.chat_id, msg.message_id))
             return
         
         password = context.args[0]
         user = update.effective_user
-        
-        # Удаляем сообщение с паролем через 3 секунды
-        await delete_message_later(update.message)
         
         if password == ROOT_PASSWORD:
             root_users.add(user.id)
@@ -99,90 +149,18 @@ async def root_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"👑 *Добро пожаловать в root-панель, {user.first_name}!*",
                 parse_mode='Markdown'
             )
-            logger.info(f"👑 Пользователь {user.first_name} ({user.id}) вошел как root")
+            bot_messages.append((msg.chat_id, msg.message_id))
         else:
             msg = await update.message.reply_text("❌ *Неверный пароль!*", parse_mode='Markdown')
-            await delete_message_later(msg)
+            bot_messages.append((msg.chat_id, msg.message_id))
             
     except Exception as e:
         msg = await update.message.reply_text("❌ *Ошибка входа!*", parse_mode='Markdown')
-        await delete_message_later(msg)
-
-async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Добавление админа по user_id"""
-    try:
-        user = update.effective_user
-        
-        if not is_root(user.id):
-            await update.message.reply_text("❌ *Только root может добавлять админов!*", parse_mode='Markdown')
-            return
-            
-        if not context.args:
-            await update.message.reply_text("❌ *Укажи user_id:* `/addadmin 123456789`", parse_mode='Markdown')
-            return
-        
-        try:
-            target_user_id = int(context.args[0])
-        except ValueError:
-            await update.message.reply_text("❌ *user_id должен быть числом!*", parse_mode='Markdown')
-            return
-        
-        if target_user_id in root_users:
-            await update.message.reply_text("❌ *Нельзя добавить root пользователя как админа!*", parse_mode='Markdown')
-            return
-        
-        admins.add(target_user_id)
-        
-        await update.message.reply_text(
-            f"✅ *Пользователь {target_user_id} добавлен в админы!*",
-            parse_mode='Markdown'
-        )
-        
-    except Exception as e:
-        await update.message.reply_text("❌ *Ошибка добавления админа!*", parse_mode='Markdown')
-
-async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Удаление админа по user_id"""
-    try:
-        user = update.effective_user
-        
-        if not is_root(user.id):
-            await update.message.reply_text("❌ *Только root может удалять админов!*", parse_mode='Markdown')
-            return
-            
-        if not context.args:
-            await update.message.reply_text("❌ *Укажи user_id:* `/removeadmin 123456789`", parse_mode='Markdown')
-            return
-        
-        try:
-            target_user_id = int(context.args[0])
-        except ValueError:
-            await update.message.reply_text("❌ *user_id должен быть числом!*", parse_mode='Markdown')
-            return
-        
-        if target_user_id in root_users:
-            await update.message.reply_text("❌ *Нельзя удалить root пользователя!*", parse_mode='Markdown')
-            return
-        
-        if target_user_id not in admins:
-            await update.message.reply_text(f"❌ *Пользователь {target_user_id} не является админом!*", parse_mode='Markdown')
-            return
-        
-        admins.remove(target_user_id)
-        
-        await update.message.reply_text(
-            f"🗑️ *Пользователь {target_user_id} удален из админов!*",
-            parse_mode='Markdown'
-        )
-        
-    except Exception as e:
-        await update.message.reply_text("❌ *Ошибка удаления админа!*", parse_mode='Markdown')
-
-# ... остальные функции (start, commands, create_event, go_command, ex_command, kapt_command, kick_command, delete_event_command) остаются без изменений ...
+        bot_messages.append((msg.chat_id, msg.message_id))
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    await update.message.reply_text(
+    msg = await update.message.reply_text(
         f"👋 *Привет, {user.first_name}!*\n\n"
         f"🎮 *CAPT BOT* - твой помощник для организации каптов\n\n"
         f"📱 *Основные команды:*\n"
@@ -196,6 +174,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"`/go 1` - записаться",
         parse_mode='Markdown'
     )
+    bot_messages.append((msg.chat_id, msg.message_id))
 
 async def commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -226,12 +205,13 @@ async def commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += "• `/removeadmin user_id` - удалить админа\n"
         text += "• `/listadmins` - список админов\n\n"
     
-    await update.message.reply_text(text, parse_mode='Markdown')
+    msg = await update.message.reply_text(text, parse_mode='Markdown')
+    bot_messages.append((msg.chat_id, msg.message_id))
 
 async def create_event(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if len(context.args) < 8:
-            await update.message.reply_text(
+            msg = await update.message.reply_text(
                 "🎯 *Создание капта*\n\n"
                 "📋 *Формат:*\n"
                 "`/create код название слоты дата время оружие хил роль`\n\n"
@@ -239,6 +219,7 @@ async def create_event(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "`/create 1 Рейд 5 20.11 21:30 Лук Да Защита`",
                 parse_mode='Markdown'
             )
+            bot_messages.append((msg.chat_id, msg.message_id))
             return
         
         event_code = context.args[0]
@@ -253,7 +234,8 @@ async def create_event(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
         
         if event_code in events:
-            await update.message.reply_text(f"⚠️ *Капт {event_code} уже существует!*", parse_mode='Markdown')
+            msg = await update.message.reply_text(f"⚠️ *Капт {event_code} уже существует!*", parse_mode='Markdown')
+            bot_messages.append((msg.chat_id, msg.message_id))
             return
         
         events[event_code] = {
@@ -284,38 +266,44 @@ async def create_event(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"❌ **Выйти:** `/ex {event_code}`"
         )
         
-        message = await update.message.reply_text(event_text, parse_mode='Markdown')
+        msg = await update.message.reply_text(event_text, parse_mode='Markdown')
+        bot_messages.append((msg.chat_id, msg.message_id))
         
         try:
-            await message.pin()
+            await msg.pin()
         except:
             pass
         
     except Exception as e:
-        await update.message.reply_text("❌ *Ошибка создания капта!*", parse_mode='Markdown')
+        msg = await update.message.reply_text("❌ *Ошибка создания капта!*", parse_mode='Markdown')
+        bot_messages.append((msg.chat_id, msg.message_id))
 
 async def go_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if not context.args:
-            await update.message.reply_text("❌ *Укажи код капта!*", parse_mode='Markdown')
+            msg = await update.message.reply_text("❌ *Укажи код капта!*", parse_mode='Markdown')
+            bot_messages.append((msg.chat_id, msg.message_id))
             return
         
         event_code = context.args[0]
         user = update.effective_user
         
         if event_code not in events:
-            await update.message.reply_text("❌ *Капт не найден!*", parse_mode='Markdown')
+            msg = await update.message.reply_text("❌ *Капт не найден!*", parse_mode='Markdown')
+            bot_messages.append((msg.chat_id, msg.message_id))
             return
         
         event = events[event_code]
         
         if len(event['participants']) >= int(event['slots']):
-            await update.message.reply_text("🚫 *Нет свободных слотов!*", parse_mode='Markdown')
+            msg = await update.message.reply_text("🚫 *Нет свободных слотов!*", parse_mode='Markdown')
+            bot_messages.append((msg.chat_id, msg.message_id))
             return
         
         user_already_registered = any(participant['user_id'] == user.id for participant in event['participants'])
         if user_already_registered:
-            await update.message.reply_text("⚠️ *Ты уже в капте!*", parse_mode='Markdown')
+            msg = await update.message.reply_text("⚠️ *Ты уже в капте!*", parse_mode='Markdown')
+            bot_messages.append((msg.chat_id, msg.message_id))
             return
         
         if user.username:
@@ -332,7 +320,7 @@ async def go_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         event['participants'].append(participant_data)
         free_slots = int(event['slots']) - len(event['participants'])
         
-        await update.message.reply_text(
+        msg = await update.message.reply_text(
             f"✅ *{display_name} записан в капт!*\n\n"
             f"🎯 **{event['name']}**\n"
             f"🔢 **Код:** `{event_code}`\n"
@@ -340,21 +328,25 @@ async def go_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🎫 **Свободно:** {free_slots} слотов",
             parse_mode='Markdown'
         )
+        bot_messages.append((msg.chat_id, msg.message_id))
         
     except Exception as e:
-        await update.message.reply_text("❌ *Ошибка записи!*", parse_mode='Markdown')
+        msg = await update.message.reply_text("❌ *Ошибка записи!*", parse_mode='Markdown')
+        bot_messages.append((msg.chat_id, msg.message_id))
 
 async def ex_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if not context.args:
-            await update.message.reply_text("❌ *Укажи код капта!*", parse_mode='Markdown')
+            msg = await update.message.reply_text("❌ *Укажи код капта!*", parse_mode='Markdown')
+            bot_messages.append((msg.chat_id, msg.message_id))
             return
         
         event_code = context.args[0]
         user = update.effective_user
         
         if event_code not in events:
-            await update.message.reply_text("❌ *Капт не найден!*", parse_mode='Markdown')
+            msg = await update.message.reply_text("❌ *Капт не найден!*", parse_mode='Markdown')
+            bot_messages.append((msg.chat_id, msg.message_id))
             return
         
         event = events[event_code]
@@ -366,13 +358,14 @@ async def ex_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 break
         
         if participant_index is None:
-            await update.message.reply_text("⚠️ *Ты не в этом капте!*", parse_mode='Markdown')
+            msg = await update.message.reply_text("⚠️ *Ты не в этом капте!*", parse_mode='Markdown')
+            bot_messages.append((msg.chat_id, msg.message_id))
             return
         
         removed_participant = event['participants'].pop(participant_index)
         free_slots = int(event['slots']) - len(event['participants'])
         
-        await update.message.reply_text(
+        msg = await update.message.reply_text(
             f"❌ *{removed_participant['display_name']} вышел из капта*\n\n"
             f"🎯 **{event['name']}**\n"
             f"🔢 **Код:** `{event_code}`\n"
@@ -380,14 +373,17 @@ async def ex_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🎫 **Свободно:** {free_slots} слотов",
             parse_mode='Markdown'
         )
+        bot_messages.append((msg.chat_id, msg.message_id))
         
     except Exception as e:
-        await update.message.reply_text("❌ *Ошибка выхода!*", parse_mode='Markdown')
+        msg = await update.message.reply_text("❌ *Ошибка выхода!*", parse_mode='Markdown')
+        bot_messages.append((msg.chat_id, msg.message_id))
 
 async def kapt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if not events:
-            await update.message.reply_text("📭 *Активных каптов нет*", parse_mode='Markdown')
+            msg = await update.message.reply_text("📭 *Активных каптов нет*", parse_mode='Markdown')
+            bot_messages.append((msg.chat_id, msg.message_id))
             return
         
         text = "🎯 *АКТИВНЫЕ КАПТЫ*\n\n"
@@ -417,28 +413,33 @@ async def kapt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"━━━━━━━━━━━━━━━━━━━━\n\n"
             )
         
-        await update.message.reply_text(text, parse_mode='Markdown')
+        msg = await update.message.reply_text(text, parse_mode='Markdown')
+        bot_messages.append((msg.chat_id, msg.message_id))
         
     except Exception as e:
-        await update.message.reply_text("❌ *Ошибка!*", parse_mode='Markdown')
+        msg = await update.message.reply_text("❌ *Ошибка!*", parse_mode='Markdown')
+        bot_messages.append((msg.chat_id, msg.message_id))
 
 async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = update.effective_user
         
         if not is_admin(user.id):
-            await update.message.reply_text("❌ *Нет прав админа!*", parse_mode='Markdown')
+            msg = await update.message.reply_text("❌ *Нет прав админа!*", parse_mode='Markdown')
+            bot_messages.append((msg.chat_id, msg.message_id))
             return
             
         if len(context.args) < 2:
-            await update.message.reply_text("❌ *Формат:* `/kick @username код`", parse_mode='Markdown')
+            msg = await update.message.reply_text("❌ *Формат:* `/kick @username код`", parse_mode='Markdown')
+            bot_messages.append((msg.chat_id, msg.message_id))
             return
         
         username_input = context.args[0]
         event_code = context.args[1]
         
         if event_code not in events:
-            await update.message.reply_text("❌ *Капт не найден!*", parse_mode='Markdown')
+            msg = await update.message.reply_text("❌ *Капт не найден!*", parse_mode='Markdown')
+            bot_messages.append((msg.chat_id, msg.message_id))
             return
         
         event = events[event_code]
@@ -457,13 +458,14 @@ async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 break
         
         if participant_index is None:
-            await update.message.reply_text(f"❌ *Участник {username_input} не найден в капте {event_code}!*", parse_mode='Markdown')
+            msg = await update.message.reply_text(f"❌ *Участник {username_input} не найден в капте {event_code}!*", parse_mode='Markdown')
+            bot_messages.append((msg.chat_id, msg.message_id))
             return
         
         event['participants'].pop(participant_index)
         free_slots = int(event['slots']) - len(event['participants'])
         
-        await update.message.reply_text(
+        msg = await update.message.reply_text(
             f"🚫 *Участник {removed_participant['display_name']} исключен из капта!*\n\n"
             f"🎯 **{event['name']}**\n"
             f"🔢 **Код:** `{event_code}`\n"
@@ -471,37 +473,44 @@ async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🎫 **Свободно:** {free_slots} слотов",
             parse_mode='Markdown'
         )
+        bot_messages.append((msg.chat_id, msg.message_id))
         
     except Exception as e:
-        await update.message.reply_text("❌ *Ошибка кика!*", parse_mode='Markdown')
+        msg = await update.message.reply_text("❌ *Ошибка кика!*", parse_mode='Markdown')
+        bot_messages.append((msg.chat_id, msg.message_id))
 
 async def delete_event_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = update.effective_user
         
         if not is_admin(user.id):
-            await update.message.reply_text("❌ *Нет прав админа!*", parse_mode='Markdown')
+            msg = await update.message.reply_text("❌ *Нет прав админа!*", parse_mode='Markdown')
+            bot_messages.append((msg.chat_id, msg.message_id))
             return
             
         if not context.args:
-            await update.message.reply_text("❌ *Укажи код капта!*", parse_mode='Markdown')
+            msg = await update.message.reply_text("❌ *Укажи код капта!*", parse_mode='Markdown')
+            bot_messages.append((msg.chat_id, msg.message_id))
             return
         
         event_code = context.args[0]
         
         if event_code not in events:
-            await update.message.reply_text("❌ *Капт не найден!*", parse_mode='Markdown')
+            msg = await update.message.reply_text("❌ *Капт не найден!*", parse_mode='Markdown')
+            bot_messages.append((msg.chat_id, msg.message_id))
             return
         
         del events[event_code]
         
-        await update.message.reply_text(
+        msg = await update.message.reply_text(
             f"🗑️ *Капт {event_code} удален!*",
             parse_mode='Markdown'
         )
+        bot_messages.append((msg.chat_id, msg.message_id))
         
     except Exception as e:
-        await update.message.reply_text("❌ *Ошибка удаления!*", parse_mode='Markdown')
+        msg = await update.message.reply_text("❌ *Ошибка удаления!*", parse_mode='Markdown')
+        bot_messages.append((msg.chat_id, msg.message_id))
 
 def is_admin(user_id):
     return user_id in admins
@@ -512,6 +521,7 @@ def is_root(user_id):
 def main():
     application = Application.builder().token(BOT_TOKEN).build()
     
+    # Добавляем хэндлеры
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("commands", commands))
     application.add_handler(CommandHandler("alogin", admin_login))
@@ -525,11 +535,18 @@ def main():
     application.add_handler(CommandHandler("kick", kick_command))
     application.add_handler(CommandHandler("del", delete_event_command))
     
+    # Запускаем автоочистку сообщений
+    application.job_queue.run_once(
+        lambda context: asyncio.create_task(cleanup_bot_messages(application)), 
+        when=0
+    )
+    
     print("🎮 CAPT BOT запущен!")
     print("🛠️ Создатель: ChikenXa")
     print("🔐 Пароль админа: 24680")
     print("👑 Пароль root: 1508")
-    print("⏰ Сообщения с паролями удаляются через 3 секунды")
+    print("⏰ Автоочистка сообщений в 6:00 по МСК активна")
+    print("👨‍💻 Создатель: ChikenXa")
     
     application.run_polling()
 
