@@ -33,8 +33,8 @@ if not BOT_TOKEN:
     exit(1)
 
 events = {}
-admins = set()
-root_users = set()
+admins = {}  # {user_id: {'username': '', 'first_name': ''}}
+root_users = {}  # {user_id: {'username': '', 'first_name': ''}}
 ADMIN_PASSWORD = "24680"
 ROOT_PASSWORD = "1508"
 
@@ -58,25 +58,30 @@ async def update_event_message(application, event_code):
         
         free_slots = int(event['slots']) - len(event['participants'])
         
-        # Формируем список участников
+        # Формируем список участников с @упоминаниями
         participants_list = ""
         if event['participants']:
             participants_list = "\n👥 *Участники:*\n"
             for i, participant in enumerate(event['participants'], 1):
-                participants_list += f"{i}. {participant['display_name']}\n"
+                # Используем @username если есть, иначе display_name
+                if participant.get('username'):
+                    participants_list += f"{i}. @{participant['username']}\n"
+                else:
+                    participants_list += f"{i}. {participant['display_name']}\n"
         else:
             participants_list = "\n👥 *Участники:* пока нет\n"
         
         event_text = (
             f"🎯 *КАПТ ОБНОВЛЕН!*\n\n"
             f"🔢 **Код:** `{event_code}`\n"
-            f"📝 **Банда:** {event['name']}\n"
+            f"📝 **Название:** {event['name']}\n"
             f"🎫 **Слоты:** {event['slots']}\n"
             f"📅 **Дата:** {event['date']}\n"
             f"⏰ **Время:** {event['time']} МСК\n"
             f"⚔️ **Оружие:** {event['weapon_type']}\n"
             f"❤️ **Хил:** {event['heal']}\n"
             f"🛡️ **Роль:** {event['role']}\n"
+            f"👤 **Создатель:** {event['author']}\n"
             f"👥 **Записано:** {len(event['participants'])}/{event['slots']}\n"
             f"🎫 **Свободно:** {free_slots} слотов"
             f"{participants_list}\n"
@@ -139,7 +144,7 @@ async def send_event_reminders(application):
                 # Если до капта 30 минут или меньше
                 if 0 <= time_diff_minutes <= 30:
                     if not event.get('reminder_sent', False):
-                        # Отправляем упоминания всем участникам
+                        # Отправляем упоминания всем участникам через @username
                         participants = event['participants']
                         if participants:
                             mentions = []
@@ -155,7 +160,7 @@ async def send_event_reminders(application):
                                     f"🎯 **{event['name']}**\n"
                                     f"⏰ **Через 30 минут!** ({event['time']} МСК)\n"
                                     f"👥 Участники: {', '.join(mentions)}\n\n"
-                                    f"⚡ Удачи! 🎮"
+                                    f"⚡ Удачи в игре! 🎮"
                                 )
                                 
                                 # Отправляем в чат где создан капт
@@ -435,8 +440,8 @@ async def commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_root:
         text += "👑 *Root команды:*\n"
         text += "• `/root` - войти как root\n"
-        text += "• `/addadmin user_id/@username` - добавить админа\n"
-        text += "• `/removeadmin user_id/@username` - удалить админа\n"
+        text += "• `/addadmin @username` - добавить админа\n"
+        text += "• `/removeadmin @username` - удалить админа\n"
         text += "• `/listadmins` - список админов\n\n"
     
     text += "👨‍💻 _Разработано ChikenXa (Данил)_"
@@ -492,7 +497,10 @@ async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if auth_type == 'admin':
         if password == ADMIN_PASSWORD:
-            admins.add(user.id)
+            admins[user.id] = {
+                'username': user.username,
+                'first_name': user.first_name
+            }
             message = await update.message.reply_text(
                 f"✅ *Добро пожаловать в админ-панель, {user.first_name}!*",
                 parse_mode='Markdown'
@@ -502,8 +510,14 @@ async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif auth_type == 'root':
         if password == ROOT_PASSWORD:
-            root_users.add(user.id)
-            admins.add(user.id)
+            root_users[user.id] = {
+                'username': user.username,
+                'first_name': user.first_name
+            }
+            admins[user.id] = {
+                'username': user.username,
+                'first_name': user.first_name
+            }
             message = await update.message.reply_text(
                 f"👑 *Добро пожаловать в root-панель, {user.first_name}!*",
                 parse_mode='Markdown'
@@ -515,7 +529,7 @@ async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     del waiting_for_password[user.id]
 
 async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Добавление админа по user_id или @username"""
+    """Добавление админа по @username"""
     try:
         user = update.effective_user
         
@@ -525,50 +539,72 @@ async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
             
         if not context.args:
-            message = await update.message.reply_text("❌ *Укажи user_id или @username*", parse_mode='Markdown')
+            message = await update.message.reply_text("❌ *Укажи @username*", parse_mode='Markdown')
             bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
             return
         
         target = context.args[0]
         
-        # Если это user_id (число)
-        if target.isdigit():
-            target_user_id = int(target)
-            if target_user_id in root_users:
-                message = await update.message.reply_text("❌ *Нельзя добавить root пользователя как админа!*", parse_mode='Markdown')
-                bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
-                return
-            
-            admins.add(target_user_id)
+        if not target.startswith('@'):
+            message = await update.message.reply_text("❌ *Укажи @username (начинается с @)*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        username = target[1:]  # Убираем @
+        
+        # Ищем пользователя по username среди тех, кто писал боту
+        target_user_id = None
+        target_user_info = None
+        
+        # Проверяем в событиях
+        for event in events.values():
+            for participant in event['participants']:
+                if participant.get('username') == username:
+                    target_user_id = participant['user_id']
+                    target_user_info = participant
+                    break
+            if target_user_id:
+                break
+        
+        if not target_user_id:
             message = await update.message.reply_text(
-                f"✅ *Пользователь {target_user_id} добавлен в админы!*",
+                f"❌ *Пользователь @{username} не найден!*\n\n"
+                f"*Чтобы добавить админа:*\n"
+                f"1. Попроси человека написать боту любое сообщение\n"
+                f"2. Затем используй команду: `/addadmin @{username}`",
                 parse_mode='Markdown'
             )
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
         
-        # Если это @username
-        elif target.startswith('@'):
-            username = target[1:]  # Убираем @
-            message = await update.message.reply_text(
-                f"🔍 *Для добавления по @username нужен user_id*\n\n"
-                f"Username: {target}\n\n"
-                f"*Как найти user_id:*\n"
-                f"1. Попроси пользователя написать боту\n"
-                f"2. Посмотри user_id в логах\n"
-                f"3. Используй команду: `/addadmin 123456789`",
-                parse_mode='Markdown'
-            )
+        if target_user_id in root_users:
+            message = await update.message.reply_text("❌ *Нельзя добавить root пользователя как админа!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
         
-        else:
-            message = await update.message.reply_text("❌ *Укажи user_id (число) или @username*", parse_mode='Markdown')
+        if target_user_id in admins:
+            message = await update.message.reply_text(f"⚠️ *Пользователь @{username} уже является админом!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
         
+        admins[target_user_id] = {
+            'username': username,
+            'first_name': target_user_info.get('first_name', 'Unknown')
+        }
+        
+        message = await update.message.reply_text(
+            f"✅ *Пользователь @{username} добавлен в админы!*",
+            parse_mode='Markdown'
+        )
         bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
         
     except Exception as e:
+        logger.error(f"Ошибка добавления админа: {e}")
         message = await update.message.reply_text("❌ *Ошибка добавления админа!*", parse_mode='Markdown')
         bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
 
 async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Удаление админа по user_id или @username"""
+    """Удаление админа по @username"""
     try:
         user = update.effective_user
         
@@ -578,49 +614,46 @@ async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
             
         if not context.args:
-            message = await update.message.reply_text("❌ *Укажи user_id или @username*", parse_mode='Markdown')
+            message = await update.message.reply_text("❌ *Укажи @username*", parse_mode='Markdown')
             bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
             return
         
         target = context.args[0]
         
-        # Если это user_id (число)
-        if target.isdigit():
-            target_user_id = int(target)
-            
-            if target_user_id in root_users:
-                message = await update.message.reply_text("❌ *Нельзя удалить root пользователя!*", parse_mode='Markdown')
-                bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
-                return
-            
-            if target_user_id not in admins:
-                message = await update.message.reply_text(f"❌ *Пользователь {target_user_id} не является админом!*", parse_mode='Markdown')
-                bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
-                return
-            
-            admins.remove(target_user_id)
-            message = await update.message.reply_text(
-                f"🗑️ *Пользователь {target_user_id} удален из админов!*",
-                parse_mode='Markdown'
-            )
+        if not target.startswith('@'):
+            message = await update.message.reply_text("❌ *Укажи @username (начинается с @)*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
         
-        # Если это @username
-        elif target.startswith('@'):
-            username = target[1:]
-            message = await update.message.reply_text(
-                f"🔍 *Для удаления по @username нужен user_id*\n\n"
-                f"Используй команду: `/removeadmin 123456789`\n\n"
-                f"*Список текущих админов:*\n"
-                f"{await get_admins_list()}",
-                parse_mode='Markdown'
-            )
+        username = target[1:]
         
-        else:
-            message = await update.message.reply_text("❌ *Укажи user_id (число) или @username*", parse_mode='Markdown')
+        # Ищем админа по username
+        target_user_id = None
+        for admin_id, admin_info in admins.items():
+            if admin_info.get('username') == username:
+                target_user_id = admin_id
+                break
         
+        if not target_user_id:
+            message = await update.message.reply_text(f"❌ *Пользователь @{username} не является админом!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        if target_user_id in root_users:
+            message = await update.message.reply_text("❌ *Нельзя удалить root пользователя!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        del admins[target_user_id]
+        
+        message = await update.message.reply_text(
+            f"🗑️ *Пользователь @{username} удален из админов!*",
+            parse_mode='Markdown'
+        )
         bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
         
     except Exception as e:
+        logger.error(f"Ошибка удаления админа: {e}")
         message = await update.message.reply_text("❌ *Ошибка удаления админа!*", parse_mode='Markdown')
         bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
 
@@ -629,9 +662,15 @@ async def get_admins_list():
         return "📭 Админов нет"
     
     text = ""
-    for i, admin_id in enumerate(admins, 1):
+    for i, (admin_id, admin_info) in enumerate(admins.items(), 1):
         is_root_user = "👑 " if admin_id in root_users else ""
-        text += f"{i}. {is_root_user}`{admin_id}`\n"
+        username = admin_info.get('username', 'без username')
+        first_name = admin_info.get('first_name', 'Unknown')
+        
+        if username:
+            text += f"{i}. {is_root_user}@{username} ({first_name})\n"
+        else:
+            text += f"{i}. {is_root_user}{first_name} (без username)\n"
     
     return text
 
@@ -647,12 +686,14 @@ async def list_admins(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = "👥 *СПИСОК АДМИНОВ*\n\n"
         text += await get_admins_list()
         text += f"\n👑 *Root пользователей:* {len(root_users)}"
+        text += f"\n🛠️ *Всего админов:* {len(admins)}"
         text += f"\n\n👨‍💻 _Разработано ChikenXa (Данил)_"
         
         message = await update.message.reply_text(text, parse_mode='Markdown')
         bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
         
     except Exception as e:
+        logger.error(f"Ошибка списка админов: {e}")
         message = await update.message.reply_text("❌ *Ошибка!*", parse_mode='Markdown')
         bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
 
@@ -732,6 +773,7 @@ async def create_event(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await pin_event_message(context.application, message.chat_id, message.message_id)
         
     except Exception as e:
+        logger.error(f"Ошибка создания капта: {e}")
         message = await update.message.reply_text("❌ *Ошибка создания капта!*", parse_mode='Markdown')
         bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
 
@@ -745,45 +787,3 @@ async def go_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         event_code = context.args[0]
         user = update.effective_user
         
-        if event_code not in events:
-            message = await update.message.reply_text("❌ *Капт не найден!*", parse_mode='Markdown')
-            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
-            return
-        
-        event = events[event_code]
-        
-        if len(event['participants']) >= int(event['slots']):
-            message = await update.message.reply_text("🚫 *Нет свободных слотов!*", parse_mode='Markdown')
-            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
-            return
-        
-        user_already_registered = any(participant['user_id'] == user.id for participant in event['participants'])
-        if user_already_registered:
-            message = await update.message.reply_text("⚠️ *Ты уже в капте!*", parse_mode='Markdown')
-            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
-            return
-        
-        if user.username:
-            display_name = f"@{user.username}"
-        else:
-            display_name = user.first_name
-        
-        participant_data = {
-            'user_id': user.id,
-            'username': user.username,
-            'display_name': display_name,
-            'first_name': user.first_name
-        }
-        event['participants'].append(participant_data)
-        
-        await update_event_message(context.application, event_code)
-        
-        message = await update.message.reply_text(
-            f"✅ *{display_name} записан в капт!*",
-            parse_mode='Markdown'
-        )
-        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
-        
-    except Exception as e:
-        message = await update.message.reply_text("❌ *Ошибка записи!*", parse_mode='Markdown')
-        bot_messages.append((message.chat_id, message.message
