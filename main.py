@@ -520,7 +520,661 @@ async def scheduled_tasks(application):
             logger.error(f"❌ Ошибка в планировщике: {e}")
             await asyncio.sleep(60)
 
-# ... остальные функции (start, ping_command, commands, и т.д.) остаются без изменений
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    message = await update.message.reply_text(
+        f"👋 *Привет, {user.first_name}!*\n\n"
+        f"🎮 *CAPT BOT* - твой помощник для организации каптов\n\n"
+        f"📱 *Основные команды:*\n"
+        f"• `/commands` - все команды\n"
+        f"• `/ping` - проверить работу бота\n"
+        f"• `/create` - создать капт\n"
+        f"• `/kapt` - список каптов\n"
+        f"• `/go [код]` - записаться\n"
+        f"• `/ex [код]` - выйти\n\n"
+        f"⚡ *Быстрый старт:*\n"
+        f"`/create 1 Рейд 5 20.11 21:30 Лук Да Защита`\n"
+        f"`/go 1` - записаться\n\n"
+        f"🕐 *Авто-статус:* каждый час с 14:00 до 23:00\n\n"
+        f"👨‍💻 _Разработано ChikenXa (Данил)_",
+        parse_mode='Markdown'
+    )
+    # Сохраняем ID сообщения
+    bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+
+async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Проверка работы бота"""
+    try:
+        start_time = time.time()
+        message = await update.message.reply_text("🏓 *Понг!*", parse_mode='Markdown')
+        end_time = time.time()
+        
+        ping_time = round((end_time - start_time) * 1000, 2)
+        
+        await context.bot.edit_message_text(
+            chat_id=update.effective_chat.id,
+            message_id=message.message_id,
+            text=f"🏓 *Понг!*\n⏱️ *Время ответа:* `{ping_time}ms`\n👨‍💻 _Разработано ChikenXa (Данил)_",
+            parse_mode='Markdown'
+        )
+        
+        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+        logger.info(f"✅ Ping command executed: {ping_time}ms")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в команде ping: {e}")
+        message = await update.message.reply_text("❌ *Ошибка выполнения команды!*", parse_mode='Markdown')
+        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+
+async def commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    is_admin = is_admin(user.id)
+    is_root = is_root(user.id)
+    
+    text = "📋 *СПИСОК КОМАНД*\n\n"
+    text += "👥 *Для всех:*\n"
+    text += "• `/start` - начать работу\n"
+    text += "• `/commands` - этот список\n"
+    text += "• `/ping` - проверить работу бота\n"
+    text += "• `/kapt` - активные капты\n"
+    text += "• `/go [код]` - записаться\n"
+    text += "• `/ex [код]` - выйти\n\n"
+    text += "🎯 *Создание капта:*\n"
+    text += "• `/create код название слоты дата время оружие хил роль`\n"
+    text += "_Пример: /create 1 Рейд 5 20.11 21:30 Лук Да Защита_\n\n"
+    
+    text += "🕐 *Автоматические функции:*\n"
+    text += "• Напоминания за 30 минут до капта\n"
+    text += "• Статус каптов каждый час (14:00-23:00)\n"
+    text += "• Спокойной ночи в 23:59\n"
+    text += "• Очистка в 6:00\n\n"
+    
+    if is_admin or is_root:
+        text += "🛠️ *Админ команды:*\n"
+        text += "• `/alogin` - войти как админ\n"
+        text += "• `/kick @username код` - кикнуть игрока\n"
+        text += "• `/del код` - удалить капт\n\n"
+    
+    if is_root:
+        text += "👑 *Root команды:*\n"
+        text += "• `/root` - войти как root\n"
+        text += "• `/addadmin @username` - добавить админа\n"
+        text += "• `/removeadmin @username` - удалить админа\n"
+        text += "• `/listadmins` - список админов\n\n"
+    
+    text += "👨‍💻 _Разработано ChikenXa (Данил)_"
+    
+    message = await update.message.reply_text(text, parse_mode='Markdown')
+    bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+
+async def admin_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    
+    try:
+        await update.message.delete()
+    except:
+        pass
+    
+    waiting_for_password[user.id] = 'admin'
+    message = await context.bot.send_message(
+        chat_id=user.id,
+        text="🔐 *Введите пароль админа:*",
+        parse_mode='Markdown'
+    )
+    bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+
+async def root_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    
+    try:
+        await update.message.delete()
+    except:
+        pass
+    
+    waiting_for_password[user.id] = 'root'
+    message = await context.bot.send_message(
+        chat_id=user.id,
+        text="👑 *Введите root пароль:*",
+        parse_mode='Markdown'
+    )
+    bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+
+async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    password = update.message.text
+    
+    if user.id not in waiting_for_password:
+        return
+    
+    auth_type = waiting_for_password[user.id]
+    
+    try:
+        await update.message.delete()
+    except:
+        pass
+    
+    if auth_type == 'admin':
+        if password == ADMIN_PASSWORD:
+            admins[user.id] = {
+                'username': user.username,
+                'first_name': user.first_name
+            }
+            message = await update.message.reply_text(
+                f"✅ *Добро пожаловать в админ-панель, {user.first_name}!*",
+                parse_mode='Markdown'
+            )
+        else:
+            message = await update.message.reply_text("❌ *Неверный пароль!*", parse_mode='Markdown')
+    
+    elif auth_type == 'root':
+        if password == ROOT_PASSWORD:
+            root_users[user.id] = {
+                'username': user.username,
+                'first_name': user.first_name
+            }
+            admins[user.id] = {
+                'username': user.username,
+                'first_name': user.first_name
+            }
+            message = await update.message.reply_text(
+                f"👑 *Добро пожаловать в root-панель, {user.first_name}!*",
+                parse_mode='Markdown'
+            )
+        else:
+            message = await update.message.reply_text("❌ *Неверный пароль!*", parse_mode='Markdown')
+    
+    bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+    del waiting_for_password[user.id]
+
+async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Добавление админа по @username"""
+    try:
+        user = update.effective_user
+        
+        if not is_root(user.id):
+            message = await update.message.reply_text("❌ *Только root может добавлять админов!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+            
+        if not context.args:
+            message = await update.message.reply_text("❌ *Укажи @username*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        target = context.args[0]
+        
+        if not target.startswith('@'):
+            message = await update.message.reply_text("❌ *Укажи @username (начинается с @)*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        username = target[1:]  # Убираем @
+        
+        # Ищем пользователя по username среди тех, кто писал боту
+        target_user_id = None
+        target_user_info = None
+        
+        # Проверяем в событиях
+        for event in events.values():
+            for participant in event['participants']:
+                if participant.get('username') == username:
+                    target_user_id = participant['user_id']
+                    target_user_info = participant
+                    break
+            if target_user_id:
+                break
+        
+        if not target_user_id:
+            message = await update.message.reply_text(
+                f"❌ *Пользователь @{username} не найден!*\n\n"
+                f"*Чтобы добавить админа:*\n"
+                f"1. Попроси человека написать боту любое сообщение\n"
+                f"2. Затем используй команду: `/addadmin @{username}`",
+                parse_mode='Markdown'
+            )
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        if target_user_id in root_users:
+            message = await update.message.reply_text("❌ *Нельзя добавить root пользователя как админа!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        if target_user_id in admins:
+            message = await update.message.reply_text(f"⚠️ *Пользователь @{username} уже является админом!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        admins[target_user_id] = {
+            'username': username,
+            'first_name': target_user_info.get('first_name', 'Unknown')
+        }
+        
+        message = await update.message.reply_text(
+            f"✅ *Пользователь @{username} добавлен в админы!*",
+            parse_mode='Markdown'
+        )
+        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+        
+    except Exception as e:
+        logger.error(f"Ошибка добавления админа: {e}")
+        message = await update.message.reply_text("❌ *Ошибка добавления админа!*", parse_mode='Markdown')
+        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+
+async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Удаление админа по @username"""
+    try:
+        user = update.effective_user
+        
+        if not is_root(user.id):
+            message = await update.message.reply_text("❌ *Только root может удалять админов!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+            
+        if not context.args:
+            message = await update.message.reply_text("❌ *Укажи @username*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        target = context.args[0]
+        
+        if not target.startswith('@'):
+            message = await update.message.reply_text("❌ *Укажи @username (начинается с @)*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        username = target[1:]
+        
+        # Ищем админа по username
+        target_user_id = None
+        for admin_id, admin_info in admins.items():
+            if admin_info.get('username') == username:
+                target_user_id = admin_id
+                break
+        
+        if not target_user_id:
+            message = await update.message.reply_text(f"❌ *Пользователь @{username} не является админом!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        if target_user_id in root_users:
+            message = await update.message.reply_text("❌ *Нельзя удалить root пользователя!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        del admins[target_user_id]
+        
+        message = await update.message.reply_text(
+            f"🗑️ *Пользователь @{username} удален из админов!*",
+            parse_mode='Markdown'
+        )
+        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+        
+    except Exception as e:
+        logger.error(f"Ошибка удаления админа: {e}")
+        message = await update.message.reply_text("❌ *Ошибка удаления админа!*", parse_mode='Markdown')
+        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+
+async def get_admins_list():
+    if not admins:
+        return "📭 Админов нет"
+    
+    text = ""
+    for i, (admin_id, admin_info) in enumerate(admins.items(), 1):
+        is_root_user = "👑 " if admin_id in root_users else ""
+        username = admin_info.get('username', 'без username')
+        first_name = admin_info.get('first_name', 'Unknown')
+        
+        if username:
+            text += f"{i}. {is_root_user}@{username} ({first_name})\n"
+        else:
+            text += f"{i}. {is_root_user}{first_name} (без username)\n"
+    
+    return text
+
+async def list_admins(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        user = update.effective_user
+        
+        if not is_root(user.id):
+            message = await update.message.reply_text("❌ *Только root может просматривать список админов!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        text = "👥 *СПИСОК АДМИНОВ*\n\n"
+        text += await get_admins_list()
+        text += f"\n👑 *Root пользователей:* {len(root_users)}"
+        text += f"\n🛠️ *Всего админов:* {len(admins)}"
+        text += f"\n\n👨‍💻 _Разработано ChikenXa (Данил)_"
+        
+        message = await update.message.reply_text(text, parse_mode='Markdown')
+        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+        
+    except Exception as e:
+        logger.error(f"Ошибка списка админов: {e}")
+        message = await update.message.reply_text("❌ *Ошибка!*", parse_mode='Markdown')
+        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+
+async def create_event(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        if len(context.args) < 8:
+            message = await update.message.reply_text(
+                "🎯 *Создание капта*\n\n"
+                "📋 *Формат:*\n"
+                "`/create код название слоты дата время оружие хил роль`\n\n"
+                "📝 *Пример:*\n"
+                "`/create 1 Рейд 5 20.11 21:30 Лук Да Защита`",
+                parse_mode='Markdown'
+            )
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        event_code = context.args[0]
+        name = context.args[1]
+        slots = context.args[2]
+        date = context.args[3]
+        time = context.args[4]
+        weapon_type = context.args[5]
+        heal = context.args[6]
+        role = context.args[7]
+        
+        user = update.effective_user
+        
+        if event_code in events:
+            message = await update.message.reply_text(f"⚠️ *Капт {event_code} уже существует!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        events[event_code] = {
+            'name': name,
+            'slots': slots,
+            'date': date,
+            'time': time,
+            'weapon_type': weapon_type,
+            'heal': heal,
+            'role': role,
+            'participants': [],
+            'author': user.first_name,
+            'author_id': user.id,
+            'reminder_sent': False
+        }
+        
+        free_slots = int(slots)
+        
+        participants_list = "\n👥 *Участники:* пока нет\n"
+        
+        event_text = (
+            f"🎯 *НОВЫЙ КАПТ СОЗДАН!*\n\n"
+            f"🔢 **Код:** `{event_code}`\n"
+            f"📝 **Название:** {name}\n"
+            f"🎫 **Слоты:** {slots}\n"
+            f"📅 **Дата:** {date}\n"
+            f"⏰ **Время:** {time} МСК\n"
+            f"⚔️ **Оружие:** {weapon_type}\n"
+            f"❤️ **Хил:** {heal}\n"
+            f"🛡️ **Роль:** {role}\n"
+            f"👤 **Создатель:** {user.first_name}\n"
+            f"👥 **Записано:** 0/{slots}\n"
+            f"🎫 **Свободно:** {free_slots} слотов"
+            f"{participants_list}\n"
+            f"⚡ **Записаться:** `/go {event_code}`\n"
+            f"❌ **Выйти:** `/ex {event_code}`"
+        )
+        
+        message = await update.message.reply_text(event_text, parse_mode='Markdown')
+        
+        # Сохраняем ID сообщения для обновления и закрепляем
+        event_messages[event_code] = (message.chat_id, message.message_id)
+        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+        
+        # Закрепляем сообщение
+        await pin_event_message(context.application, message.chat_id, message.message_id)
+        
+    except Exception as e:
+        logger.error(f"Ошибка создания капта: {e}")
+        message = await update.message.reply_text("❌ *Ошибка создания капта!*", parse_mode='Markdown')
+        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+
+async def go_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        if not context.args:
+            message = await update.message.reply_text("❌ *Укажи код капта!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        event_code = context.args[0]
+        user = update.effective_user
+        
+        if event_code not in events:
+            message = await update.message.reply_text("❌ *Капт не найден!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        event = events[event_code]
+        
+        if len(event['participants']) >= int(event['slots']):
+            message = await update.message.reply_text("🚫 *Нет свободных слотов!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        user_already_registered = any(participant['user_id'] == user.id for participant in event['participants'])
+        if user_already_registered:
+            message = await update.message.reply_text("⚠️ *Ты уже в капте!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        # Всегда используем @username если он есть
+        if user.username:
+            display_name = f"@{user.username}"
+        else:
+            display_name = user.first_name
+        
+        participant_data = {
+            'user_id': user.id,
+            'username': user.username,  # Сохраняем username
+            'display_name': display_name,
+            'first_name': user.first_name
+        }
+        event['participants'].append(participant_data)
+        
+        await update_event_message(context.application, event_code)
+        
+        message = await update.message.reply_text(
+            f"✅ *{display_name} записан в капт!*",
+            parse_mode='Markdown'
+        )
+        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+        
+    except Exception as e:
+        message = await update.message.reply_text("❌ *Ошибка записи!*", parse_mode='Markdown')
+        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+
+async def ex_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        if not context.args:
+            message = await update.message.reply_text("❌ *Укажи код капта!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        event_code = context.args[0]
+        user = update.effective_user
+        
+        if event_code not in events:
+            message = await update.message.reply_text("❌ *Капт не найден!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        event = events[event_code]
+        
+        participant_index = None
+        for i, participant in enumerate(event['participants']):
+            if participant['user_id'] == user.id:
+                participant_index = i
+                break
+        
+        if participant_index is None:
+            message = await update.message.reply_text("⚠️ *Ты не в этом капте!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        removed_participant = event['participants'].pop(participant_index)
+        
+        # Обновляем сообщение с участниками
+        await update_event_message(context.application, event_code)
+        
+        message = await update.message.reply_text(
+            f"❌ *{removed_participant['display_name']} вышел из капта*",
+            parse_mode='Markdown'
+        )
+        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+        
+    except Exception as e:
+        message = await update.message.reply_text("❌ *Ошибка выхода!*", parse_mode='Markdown')
+        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+
+async def kapt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        if not events:
+            message = await update.message.reply_text("📭 *Активных каптов нет*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        text = "🎯 *АКТИВНЫЕ КАПТЫ*\n\n"
+        
+        for code, event in events.items():
+            free_slots = int(event['slots']) - len(event['participants'])
+            
+            participants_list = ""
+            if event['participants']:
+                participants_list = "\n👥 *Участники:*\n"
+                for i, participant in enumerate(event['participants'], 1):
+                    if participant.get('username'):
+                        participants_list += f"{i}. @{participant['username']}\n"
+                    else:
+                        participants_list += f"{i}. {participant['display_name']}\n"
+            else:
+                participants_list = "\n👥 *Участники:* пока нет\n"
+            
+            text += (
+                f"🔢 **Код:** `{code}`\n"
+                f"🎯 **{event['name']}**\n"
+                f"📅 **Когда:** {event['date']} {event['time']} МСК\n"
+                f"👥 **Записано:** {len(event['participants'])}/{event['slots']}\n"
+                f"🎫 **Свободно:** {free_slots} слотов\n"
+                f"⚔️ **Оружие:** {event['weapon_type']}\n"
+                f"❤️ **Хил:** {event['heal']}\n"
+                f"🛡️ **Роль:** {event['role']}"
+                f"{participants_list}\n"
+                f"⚡ `/go {code}`  •  ❌ `/ex {code}`\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            )
+        
+        message = await update.message.reply_text(text, parse_mode='Markdown')
+        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+        
+    except Exception as e:
+        message = await update.message.reply_text("❌ *Ошибка!*", parse_mode='Markdown')
+        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+
+async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        user = update.effective_user
+        
+        if not is_admin(user.id):
+            message = await update.message.reply_text("❌ *Нет прав админа!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+            
+        if len(context.args) < 2:
+            message = await update.message.reply_text("❌ *Формат:* `/kick @username код`", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        username_input = context.args[0]
+        event_code = context.args[1]
+        
+        if event_code not in events:
+            message = await update.message.reply_text("❌ *Капт не найден!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        event = events[event_code]
+        
+        participant_index = None
+        removed_participant = None
+        
+        for i, participant in enumerate(event['participants']):
+            clean_input = username_input.replace('@', '').lower()
+            participant_username = participant['username'] or ""
+            participant_display = participant['display_name'].replace('@', '').lower()
+            
+            if (participant_username.lower() == clean_input) or (participant_display == clean_input):
+                participant_index = i
+                removed_participant = participant
+                break
+        
+        if participant_index is None:
+            message = await update.message.reply_text(f"❌ *Участник {username_input} не найден в капте {event_code}!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        event['participants'].pop(participant_index)
+        
+        # Обновляем сообщение с участниками
+        await update_event_message(context.application, event_code)
+        
+        message = await update.message.reply_text(
+            f"🚫 *Участник {removed_participant['display_name']} исключен из капта!*",
+            parse_mode='Markdown'
+        )
+        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+        
+    except Exception as e:
+        message = await update.message.reply_text("❌ *Ошибка кика!*", parse_mode='Markdown')
+        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+
+async def delete_event_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        user = update.effective_user
+        
+        if not is_admin(user.id):
+            message = await update.message.reply_text("❌ *Нет прав админа!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+            
+        if not context.args:
+            message = await update.message.reply_text("❌ *Укажи код капта!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        event_code = context.args[0]
+        
+        if event_code not in events:
+            message = await update.message.reply_text("❌ *Капт не найден!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        # Удаляем сообщение капта если оно есть
+        if event_code in event_messages:
+            try:
+                chat_id, message_id = event_messages[event_code]
+                await context.bot.delete_message(chat_id, message_id)
+            except:
+                pass
+            del event_messages[event_code]
+        
+        # Удаляем капт
+        del events[event_code]
+        
+        message = await update.message.reply_text(
+            f"🗑️ *Капт {event_code} удален!*",
+            parse_mode='Markdown'
+        )
+        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+        
+    except Exception as e:
+        message = await update.message.reply_text("❌ *Ошибка удаления!*", parse_mode='Markdown')
+        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
 
 def main():
     application = Application.builder().token(BOT_TOKEN).build()
