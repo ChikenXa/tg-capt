@@ -36,7 +36,7 @@ root_users = set()
 ADMIN_PASSWORD = "24680"
 ROOT_PASSWORD = "1508"
 
-# Для хранения ID сообщений бота
+# Для хранения ID сообщений бота (кроме /alogin и /root)
 bot_messages = []
 
 # Московское время (UTC+3)
@@ -56,16 +56,6 @@ async def cleanup_bot_messages(application):
             if now.hour == 6 and now.minute == 0:
                 logger.info("🕕 Начинаю автоочистку сообщений бота...")
                 
-                # Отправляем сообщение о начале очистки
-                cleanup_msg = await application.bot.send_message(
-                    chat_id=list(events.keys())[0] if events else None,  # Отправляем в первый доступный чат
-                    text="🔄 *Автоочистка сообщений бота*\n\n"
-                         "⏰ *Время:* 6:00 по МСК\n"
-                         "👨‍💻 *Создатель:* ChikenXa\n"
-                         "🗑️ *Удаляю все сообщения бота...*",
-                    parse_mode='Markdown'
-                )
-                
                 deleted_count = 0
                 # Удаляем все сообщения бота
                 for chat_id, message_id in bot_messages:
@@ -78,20 +68,6 @@ async def cleanup_bot_messages(application):
                 
                 # Очищаем список сообщений
                 bot_messages.clear()
-                
-                # Отправляем сообщение о завершении очистки
-                await application.bot.send_message(
-                    chat_id=cleanup_msg.chat_id,
-                    text=f"✅ *Автоочистка завершена!*\n\n"
-                         f"🗑️ *Удалено сообщений:* {deleted_count}\n"
-                         f"⏰ *Время:* 6:00 по МСК\n"
-                         f"👨‍💻 *Создатель:* ChikenXa\n\n"
-                         f"_Следующая очистка завтра в 6:00_",
-                    parse_mode='Markdown'
-                )
-                
-                # Удаляем сообщение о начале очистки
-                await cleanup_msg.delete()
                 
                 logger.info(f"✅ Автоочистка завершена. Удалено сообщений: {deleted_count}")
                 
@@ -106,11 +82,10 @@ async def cleanup_bot_messages(application):
             await asyncio.sleep(60)
 
 async def admin_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Вход как админ"""
+    """Вход как админ - сообщения НЕ отслеживаются"""
     try:
         if not context.args:
-            msg = await update.message.reply_text("🔐 *Введите пароль:* `/alogin пароль`", parse_mode='Markdown')
-            bot_messages.append((msg.chat_id, msg.message_id))
+            await update.message.reply_text("🔐 *Введите пароль:* `/alogin пароль`", parse_mode='Markdown')
             return
         
         password = context.args[0]
@@ -118,25 +93,21 @@ async def admin_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if password == ADMIN_PASSWORD:
             admins.add(user.id)
-            msg = await update.message.reply_text(
+            await update.message.reply_text(
                 f"✅ *Добро пожаловать в админ-панель, {user.first_name}!*",
                 parse_mode='Markdown'
             )
-            bot_messages.append((msg.chat_id, msg.message_id))
         else:
-            msg = await update.message.reply_text("❌ *Неверный пароль!*", parse_mode='Markdown')
-            bot_messages.append((msg.chat_id, msg.message_id))
+            await update.message.reply_text("❌ *Неверный пароль!*", parse_mode='Markdown')
             
     except Exception as e:
-        msg = await update.message.reply_text("❌ *Ошибка входа!*", parse_mode='Markdown')
-        bot_messages.append((msg.chat_id, msg.message_id))
+        await update.message.reply_text("❌ *Ошибка входа!*", parse_mode='Markdown')
 
 async def root_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Вход как root"""
+    """Вход как root - сообщения НЕ отслеживаются"""
     try:
         if not context.args:
-            msg = await update.message.reply_text("👑 *Введите пароль:* `/root пароль`", parse_mode='Markdown')
-            bot_messages.append((msg.chat_id, msg.message_id))
+            await update.message.reply_text("👑 *Введите пароль:* `/root пароль`", parse_mode='Markdown')
             return
         
         password = context.args[0]
@@ -145,18 +116,17 @@ async def root_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if password == ROOT_PASSWORD:
             root_users.add(user.id)
             admins.add(user.id)
-            msg = await update.message.reply_text(
+            await update.message.reply_text(
                 f"👑 *Добро пожаловать в root-панель, {user.first_name}!*",
                 parse_mode='Markdown'
             )
-            bot_messages.append((msg.chat_id, msg.message_id))
         else:
-            msg = await update.message.reply_text("❌ *Неверный пароль!*", parse_mode='Markdown')
-            bot_messages.append((msg.chat_id, msg.message_id))
+            await update.message.reply_text("❌ *Неверный пароль!*", parse_mode='Markdown')
             
     except Exception as e:
-        msg = await update.message.reply_text("❌ *Ошибка входа!*", parse_mode='Markdown')
-        bot_messages.append((msg.chat_id, msg.message_id))
+        await update.message.reply_text("❌ *Ошибка входа!*", parse_mode='Markdown')
+
+# Все остальные функции остаются с отслеживанием сообщений
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -521,7 +491,6 @@ def is_root(user_id):
 def main():
     application = Application.builder().token(BOT_TOKEN).build()
     
-    # Добавляем хэндлеры
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("commands", commands))
     application.add_handler(CommandHandler("alogin", admin_login))
@@ -546,7 +515,7 @@ def main():
     print("🔐 Пароль админа: 24680")
     print("👑 Пароль root: 1508")
     print("⏰ Автоочистка сообщений в 6:00 по МСК активна")
-    print("👨‍💻 Создатель: ChikenXa")
+    print("💬 Сообщения /alogin и /root НЕ удаляются при очистке")
     
     application.run_polling()
 
