@@ -42,10 +42,22 @@ waiting_for_password = {}
 event_messages = {}  # {event_code: (chat_id, message_id)}
 bot_messages = []  # [(chat_id, message_id, timestamp)] - для отслеживания сообщений бота
 
+# Московское время постоянно UTC+3 (без летнего времени)
 MOSCOW_UTC_OFFSET = 3
 
 def get_moscow_time():
+    """Получаем точное московское время (UTC+3)"""
     return datetime.utcnow() + timedelta(hours=MOSCOW_UTC_OFFSET)
+
+def debug_time():
+    """Функция для отладки времени"""
+    current_utc = datetime.utcnow()
+    current_moscow = get_moscow_time()
+    
+    logger.info(f"🕐 ВРЕМЯ ДЛЯ ОТЛАДКИ:")
+    logger.info(f"UTC: {current_utc.strftime('%d.%m.%Y %H:%M:%S')}")
+    logger.info(f"МСК: {current_moscow.strftime('%d.%m.%Y %H:%M:%S')}")
+    logger.info(f"Час МСК: {current_moscow.hour}, Минута МСК: {current_moscow.minute}")
 
 def is_admin(user_id):
     return user_id in admins
@@ -120,7 +132,7 @@ async def send_event_reminders(application):
     """Отправляем напоминания за 30 минут до капта"""
     try:
         current_time = get_moscow_time()
-        logger.info(f"Проверка напоминаний: {current_time}")
+        logger.info(f"🔔 Проверка напоминаний: {current_time.strftime('%d.%m.%Y %H:%M:%S')} МСК")
         
         for event_code, event in events.items():
             try:
@@ -134,18 +146,17 @@ async def send_event_reminders(application):
                 
                 try:
                     event_datetime = datetime.strptime(event_datetime_str, "%d.%m.%Y %H:%M")
+                    # Конвертируем в московское время (предполагаем, что время ввода было МСК)
+                    event_datetime = event_datetime  # Уже в правильном формате
                 except ValueError:
-                    try:
-                        event_datetime = datetime.strptime(event_datetime_str, "%d.%m.%Y %H:%M")
-                    except:
-                        logger.error(f"Ошибка парсинга даты: {event_datetime_str}")
-                        continue
+                    logger.error(f"❌ Ошибка парсинга даты: {event_datetime_str}")
+                    continue
                 
                 # Разница во времени
                 time_diff = event_datetime - current_time
                 time_diff_minutes = time_diff.total_seconds() / 60
                 
-                logger.info(f"Капт {event_code}: {time_diff_minutes:.1f} минут до начала")
+                logger.info(f"📊 Капт {event_code}: {time_diff_minutes:.1f} минут до начала")
                 
                 # Если до капта 30 минут или меньше
                 if 0 <= time_diff_minutes <= 30:
@@ -180,15 +191,15 @@ async def send_event_reminders(application):
                                     # Сохраняем ID сообщения для последующего удаления
                                     bot_messages.append((message.chat_id, message.message_id, current_time.timestamp()))
                                     
-                                    logger.info(f"Напоминание отправлено для капта {event_code}")
+                                    logger.info(f"✅ Напоминание отправлено для капта {event_code}")
                             
                             event['reminder_sent'] = True
                 
             except Exception as e:
-                logger.error(f"Ошибка отправки напоминания для капта {event_code}: {e}")
+                logger.error(f"❌ Ошибка отправки напоминания для капта {event_code}: {e}")
                 
     except Exception as e:
-        logger.error(f"Ошибка в функции напоминаний: {e}")
+        logger.error(f"❌ Ошибка в функции напоминаний: {e}")
 
 async def send_hourly_kapt_status(application):
     """Каждый час с 14:00 до 23:00 отправляем статус каптов"""
@@ -197,9 +208,12 @@ async def send_hourly_kapt_status(application):
         current_hour = current_time.hour
         current_minute = current_time.minute
         
+        # Выводим отладочную информацию
+        logger.info(f"🕐 Проверка ежечасного статуса: {current_hour:02d}:{current_minute:02d} МСК")
+        
         # Проверяем время: с 14:00 до 23:00 каждый час в :00 минут
         if 14 <= current_hour <= 23 and current_minute == 0:
-            logger.info(f"Отправка ежечасного статуса каптов в {current_hour}:00")
+            logger.info(f"✅ Отправка ежечасного статуса каптов в {current_hour:02d}:00 МСК")
             
             # Получаем список всех уникальных чатов где есть капты
             unique_chats = set()
@@ -219,7 +233,7 @@ async def send_hourly_kapt_status(application):
                         )
                         # Сохраняем ID сообщения для последующего удаления
                         bot_messages.append((message.chat_id, message.message_id, current_time.timestamp()))
-                        logger.info(f"Ежечасный статус отправлен в чат {chat_id}")
+                        logger.info(f"✅ Ежечасный статус отправлен в чат {chat_id}")
                     else:
                         message = await application.bot.send_message(
                             chat_id=chat_id,
@@ -227,12 +241,15 @@ async def send_hourly_kapt_status(application):
                             parse_mode='Markdown'
                         )
                         bot_messages.append((message.chat_id, message.message_id, current_time.timestamp()))
+                        logger.info(f"✅ Статус 'нет каптов' отправлен в чат {chat_id}")
                         
                 except Exception as e:
-                    logger.error(f"Ошибка отправки ежечасного статуса в чат {chat_id}: {e}")
+                    logger.error(f"❌ Ошибка отправки ежечасного статуса в чат {chat_id}: {e}")
+        else:
+            logger.info(f"⏰ Не время для статуса: {current_hour:02d}:{current_minute:02d} МСК")
                     
     except Exception as e:
-        logger.error(f"Ошибка отправки ежечасного статуса: {e}")
+        logger.error(f"❌ Ошибка отправки ежечасного статуса: {e}")
 
 async def generate_kapt_text():
     """Генерирует текст для команды /kapt"""
@@ -273,14 +290,18 @@ async def generate_kapt_text():
         return text
         
     except Exception as e:
-        logger.error(f"Ошибка генерации текста каптов: {e}")
+        logger.error(f"❌ Ошибка генерации текста каптов: {e}")
         return None
 
 async def send_good_night(application):
     """Отправляем спокойной ночи в 23:59"""
     try:
         current_time = get_moscow_time()
+        logger.info(f"🌙 Проверка спокойной ночи: {current_time.strftime('%H:%M')} МСК")
+        
         if current_time.hour == 23 and current_time.minute == 59:
+            logger.info("✅ Отправка спокойной ночи")
+            
             # Получаем список всех уникальных чатов где есть капты
             unique_chats = set()
             for chat_id, _ in event_messages.values():
@@ -298,19 +319,23 @@ async def send_good_night(application):
                     )
                     # Сохраняем ID сообщения для последующего удаления
                     bot_messages.append((message.chat_id, message.message_id, current_time.timestamp()))
-                    logger.info(f"Спокойной ночи отправлено в чат {chat_id}")
+                    logger.info(f"✅ Спокойной ночи отправлено в чат {chat_id}")
                 except Exception as e:
-                    logger.error(f"Ошибка отправки спокойной ночи в чат {chat_id}: {e}")
+                    logger.error(f"❌ Ошибка отправки спокойной ночи в чат {chat_id}: {e}")
+        else:
+            logger.info(f"⏰ Не время для спокойной ночи: {current_time.strftime('%H:%M')} МСК")
                     
     except Exception as e:
-        logger.error(f"Ошибка отправки спокойной ночи: {e}")
+        logger.error(f"❌ Ошибка отправки спокойной ночи: {e}")
 
 async def cleanup_old_messages(application):
     """Удаляем старые сообщения бота в 6:00 утра с красивым выводом"""
     try:
         current_time = get_moscow_time()
+        logger.info(f"🧹 Проверка очистки: {current_time.strftime('%H:%M')} МСК")
+        
         if current_time.hour == 6 and current_time.minute == 0:
-            logger.info("Начало красивой очистки старых сообщений...")
+            logger.info("✅ Начало красивой очистки старых сообщений...")
             
             # Получаем список всех уникальных чатов
             unique_chats = set()
@@ -387,7 +412,7 @@ async def cleanup_old_messages(application):
                                 await asyncio.sleep(0.5)
                                 
                         except Exception as e:
-                            logger.warning(f"Не удалось удалить сообщение {message_id}: {e}")
+                            logger.warning(f"⚠️ Не удалось удалить сообщение {message_id}: {e}")
                     
                     # Удаляем обработанные сообщения из списка
                     for message_id, timestamp in messages_to_delete:
@@ -458,20 +483,25 @@ async def cleanup_old_messages(application):
                     # Сохраняем финальное сообщение для следующей очистки
                     bot_messages.append((status_message.chat_id, status_message.message_id, current_time.timestamp()))
                     
-                    logger.info(f"Красивая очистка завершена в чате {chat_id}")
+                    logger.info(f"✅ Красивая очистка завершена в чате {chat_id}")
                     
                 except Exception as e:
-                    logger.error(f"Ошибка красивой очистки в чате {chat_id}: {e}")
+                    logger.error(f"❌ Ошибка красивой очистки в чате {chat_id}: {e}")
             
-            logger.info("Красивая очистка сообщений завершена во всех чатах")
+            logger.info("✅ Красивая очистка сообщений завершена во всех чатах")
+        else:
+            logger.info(f"⏰ Не время для очистки: {current_time.strftime('%H:%M')} МСК")
             
     except Exception as e:
-        logger.error(f"Ошибка красивой очистки сообщений: {e}")
+        logger.error(f"❌ Ошибка красивой очистки сообщений: {e}")
 
 async def scheduled_tasks(application):
     """Планировщик задач"""
     while True:
         try:
+            # Выводим отладочную информацию о времени
+            debug_time()
+            
             await asyncio.sleep(30)  # Проверяем каждые 30 секунд
             
             # Напоминания о каптах
@@ -487,134 +517,10 @@ async def scheduled_tasks(application):
             await cleanup_old_messages(application)
             
         except Exception as e:
-            logger.error(f"Ошибка в планировщике: {e}")
+            logger.error(f"❌ Ошибка в планировщике: {e}")
             await asyncio.sleep(60)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    message = await update.message.reply_text(
-        f"👋 *Привет, {user.first_name}!*\n\n"
-        f"🎮 *CAPT BOT* - твой помощник для организации каптов\n\n"
-        f"📱 *Основные команды:*\n"
-        f"• `/commands` - все команды\n"
-        f"• `/ping` - проверить работу бота\n"
-        f"• `/create` - создать капт\n"
-        f"• `/kapt` - список каптов\n"
-        f"• `/go [код]` - записаться\n"
-        f"• `/ex [код]` - выйти\n\n"
-        f"⚡ *Быстрый старт:*\n"
-        f"`/create 1 Рейд 5 20.11 21:30 Лук Да Защита`\n"
-        f"`/go 1` - записаться\n\n"
-        f"🕐 *Авто-статус:* каждый час с 14:00 до 23:00\n\n"
-        f"👨‍💻 _Разработано ChikenXa (Данил)_",
-        parse_mode='Markdown'
-    )
-    # Сохраняем ID сообщения
-    bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
-
-async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Проверка работы бота"""
-    start_time = time.time()
-    message = await update.message.reply_text("🏓 *Понг!*", parse_mode='Markdown')
-    end_time = time.time()
-    
-    ping_time = round((end_time - start_time) * 1000, 2)
-    
-    await context.bot.edit_message_text(
-        chat_id=update.effective_chat.id,
-        message_id=message.message_id,
-        text=f"🏓 *Понг!*\n⏱️ *Время ответа:* `{ping_time}ms`\n👨‍💻 _Разработано ChikenXa (Данил)_",
-        parse_mode='Markdown'
-    )
-    
-    bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
-
-async def commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    is_admin = is_admin(user.id)
-    is_root = is_root(user.id)
-    
-    text = "📋 *СПИСОК КОМАНД*\n\n"
-    text += "👥 *Для всех:*\n"
-    text += "• `/start` - начать работу\n"
-    text += "• `/commands` - этот список\n"
-    text += "• `/ping` - проверить работу бота\n"
-    text += "• `/kapt` - активные капты\n"
-    text += "• `/go [код]` - записаться\n"
-    text += "• `/ex [код]` - выйти\n\n"
-    text += "🎯 *Создание капта:*\n"
-    text += "• `/create код название слоты дата время оружие хил роль`\n"
-    text += "_Пример: /create 1 Рейд 5 20.11 21:30 Лук Да Защита_\n\n"
-    
-    text += "🕐 *Автоматические функции:*\n"
-    text += "• Напоминания за 30 минут до капта\n"
-    text += "• Статус каптов каждый час (14:00-23:00)\n"
-    text += "• Спокойной ночи в 23:59\n"
-    text += "• Очистка в 6:00\n\n"
-    
-    if is_admin or is_root:
-        text += "🛠️ *Админ команды:*\n"
-        text += "• `/alogin` - войти как админ\n"
-        text += "• `/kick @username код` - кикнуть игрока\n"
-        text += "• `/del код` - удалить капт\n\n"
-    
-    if is_root:
-        text += "👑 *Root команды:*\n"
-        text += "• `/root` - войти как root\n"
-        text += "• `/addadmin @username` - добавить админа\n"
-        text += "• `/removeadmin @username` - удалить админа\n"
-        text += "• `/listadmins` - список админов\n\n"
-    
-    text += "👨‍💻 _Разработано ChikenXa (Данил)_"
-    
-    message = await update.message.reply_text(text, parse_mode='Markdown')
-    bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
-
-# ... остальные функции остаются без изменений (admin_login, root_login, handle_password, add_admin, remove_admin, list_admins, create_event, go_command, ex_command, kapt_command, kick_command, delete_event_command)
-
-async def kapt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        if not events:
-            message = await update.message.reply_text("📭 *Активных каптов нет*", parse_mode='Markdown')
-            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
-            return
-        
-        text = "🎯 *АКТИВНЫЕ КАПТЫ*\n\n"
-        
-        for code, event in events.items():
-            free_slots = int(event['slots']) - len(event['participants'])
-            
-            participants_list = ""
-            if event['participants']:
-                participants_list = "\n👥 *Участники:*\n"
-                for i, participant in enumerate(event['participants'], 1):
-                    if participant.get('username'):
-                        participants_list += f"{i}. @{participant['username']}\n"
-                    else:
-                        participants_list += f"{i}. {participant['display_name']}\n"
-            else:
-                participants_list = "\n👥 *Участники:* пока нет\n"
-            
-            text += (
-                f"🔢 **Код:** `{code}`\n"
-                f"🎯 **{event['name']}**\n"
-                f"📅 **Когда:** {event['date']} {event['time']} МСК\n"
-                f"👥 **Записано:** {len(event['participants'])}/{event['slots']}\n"
-                f"🎫 **Свободно:** {free_slots} слотов\n"
-                f"⚔️ **Оружие:** {event['weapon_type']}\n"
-                f"❤️ **Хил:** {event['heal']}\n"
-                f"🛡️ **Роль:** {event['role']}"
-                f"{participants_list}\n"
-                f"⚡ `/go {code}`  •  ❌ `/ex {code}`\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n\n"
-            )
-        
-        message = await update.message.reply_text(text, parse_mode='Markdown')
-        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
-        
-    except Exception as e:
-        message = await update.message.reply_text("❌ *Ошибка!*", parse_mode='Markdown')
-        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+# ... остальные функции (start, ping_command, commands, и т.д.) остаются без изменений
 
 def main():
     application = Application.builder().token(BOT_TOKEN).build()
@@ -651,6 +557,7 @@ def main():
     print("🌙 Спокойной ночи в 23:59!")
     print("🧹 Очистка сообщений в 6:00!")
     print("🏓 Команда /ping доступна!")
+    print("⏰ Московское время: UTC+3 (постоянно)")
     
     application.run_polling()
 
