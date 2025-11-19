@@ -370,9 +370,12 @@ async def send_good_night(application):
     """Отправляем спокойной ночи в 23:00 и очищаем капты"""
     try:
         current_time = get_moscow_time()
+        current_hour = current_time.hour
+        current_minute = current_time.minute
+        
         logger.info(f"🌙 Проверка спокойной ночи: {current_time.strftime('%H:%M')} МСК")
         
-        if current_time.hour == 23 and current_minute == 0:
+        if current_hour == 23 and current_minute == 0:
             logger.info("✅ Отправка спокойной ночи и очистка каптов")
             
             # Получаем список всех уникальных чатов где есть капты
@@ -421,6 +424,33 @@ async def send_good_night(application):
                     
     except Exception as e:
         logger.error(f"❌ Ошибка отправки спокойной ночи: {e}")
+
+async def good_night_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ручной вызов функции спокойной ночи (только для root)"""
+    try:
+        user = update.effective_user
+        
+        if not is_root(user.id):
+            message = await update.message.reply_text("❌ *Только root может использовать эту команду!*", parse_mode='Markdown')
+            bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+            return
+        
+        logger.info(f"👑 Ручной вызов спокойной ночи от {user.first_name} (ID: {user.id})")
+        
+        # Вызываем функцию спокойной ночи
+        await send_good_night(context.application)
+        
+        message = await update.message.reply_text(
+            "✅ *Функция 'спокойной ночи' запущена вручную!*\n"
+            "🌙 Все капты очищены, сообщения отправлены.",
+            parse_mode='Markdown'
+        )
+        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка ручного вызова спокойной ночи: {e}")
+        message = await update.message.reply_text("❌ *Ошибка выполнения команды!*", parse_mode='Markdown')
+        bot_messages.append((message.chat_id, message.message_id, get_moscow_time().timestamp()))
 
 async def cleanup_old_messages(application):
     """Удаляем старые сообщения бота в 6:00 утра с красивым выводом"""
@@ -696,7 +726,8 @@ async def commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += "• `/root` - войти как root\n"
         text += "• `/addadmin @username` - добавить админа\n"
         text += "• `/removeadmin @username` - удалить админа\n"
-        text += "• `/listadmins` - список админов\n\n"
+        text += "• `/listadmins` - список админов\n"
+        text += "• `/goodnight` - ручной вызов спокойной ночи\n\n"
     
     text += "👨‍💻 _Разработано ChikenXa (Данил)_"
     
@@ -1284,6 +1315,7 @@ def main():
     application.add_handler(CommandHandler("addadmin", add_admin))
     application.add_handler(CommandHandler("removeadmin", remove_admin))
     application.add_handler(CommandHandler("listadmins", list_admins))
+    application.add_handler(CommandHandler("goodnight", good_night_command))  # НОВАЯ КОМАНДА
     application.add_handler(CommandHandler("create", create_event))
     application.add_handler(CommandHandler("go", go_command))
     application.add_handler(CommandHandler("ex", ex_command))
@@ -1306,6 +1338,7 @@ def main():
     print("🕐 Ежедневный статус в 14:00 МСК (с закреплением)!")
     print("🌙 Спокойной ночи в 23:00 МСК (очистка каптов)!")
     print("🧹 Полная очистка системы в 6:00 МСК!")
+    print("👑 НОВАЯ КОМАНДА: /goodnight - ручной вызов спокойной ночи (только root)")
     print("🏓 Команда /ping доступна!")
     print("📋 Команда /commands доступна!")
     print("⏰ Московское время: UTC+3 (постоянно)")
