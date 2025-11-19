@@ -7,19 +7,78 @@ from telegram import Update
 from flask import Flask
 import threading
 import time
+import requests
 
-# Веб-сервер для поддержания активности
+# ==================== KEEP ALIVE SYSTEM ====================
+from flask import Flask as KeepAliveApp
+from threading import Thread as KeepAliveThread
+import time as keep_alive_time
+
+# Keep-alive сервер
+keep_alive_flask = KeepAliveApp('keep_alive')
+
+@keep_alive_flask.route('/')
+def keep_alive_home():
+    return "🟢 CAPT BOT is running 24/7! 🚀"
+
+@keep_alive_flask.route('/health')
+def health_check():
+    return "✅ OK", 200
+
+@keep_alive_flask.route('/ping')
+def ping():
+    return "🏓 PONG", 200
+
+def run_keep_alive_server():
+    keep_alive_flask.run(host='0.0.0.0', port=8080)
+
+# Функция авто-пинга
+def auto_ping_self():
+    while True:
+        try:
+            # Получаем URL Replit автоматически
+            repl_slug = os.environ.get('REPL_SLUG', 'tg-capt')
+            repl_owner = os.environ.get('REPL_OWNER', 'chikenxa')
+            url = f"https://{repl_slug}.{repl_owner}.repl.co"
+            response = requests.get(url, timeout=10)
+            current_time = datetime.now().strftime('%H:%M:%S')
+            print(f"🟢 Keep-alive ping: {current_time} - Status: {response.status_code}")
+        except Exception as e:
+            current_time = datetime.now().strftime('%H:%M:%S')
+            print(f"⚠️  Keep-alive failed: {e} at {current_time}")
+        keep_alive_time.sleep(240)  # 4 минуты
+
+# Запускаем keep-alive системы
+KeepAliveThread(target=run_keep_alive_server, daemon=True).start()
+KeepAliveThread(target=auto_ping_self, daemon=True).start()
+
+print("🔧 Keep-alive system started!")
+# ==================== END KEEP ALIVE SYSTEM ====================
+
+# Основной Flask app (оставляем для обратной совместимости)
 app = Flask(__name__)
 
 @app.route('/')
 def home():
     return "🎮 CAPT BOT is running!"
 
-def run_web():
-    app.run(host='0.0.0.0', port=8080)
+@app.route('/status')
+def status():
+    return {
+        "status": "online",
+        "bot": "CAPT BOT",
+        "timestamp": datetime.now().isoformat(),
+        "events_count": len(events),
+        "active_chats": len(set(chat_id for chat_id, _ in event_messages.values()))
+    }
 
+def run_web():
+    app.run(host='0.0.0.0', port=5000)
+
+# Запускаем основной Flask в отдельном потоке
 threading.Thread(target=run_web, daemon=True).start()
 
+# Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -1227,6 +1286,7 @@ def main():
     print("🏓 Команда /ping доступна!")
     print("📋 Команда /commands доступна!")
     print("⏰ Московское время: UTC+3 (постоянно)")
+    print("🔧 Keep-alive system: ACTIVE (бот будет работать 24/7)")
     
     application.run_polling()
 
