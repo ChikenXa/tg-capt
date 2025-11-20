@@ -199,7 +199,7 @@ class DanilBot:
                     'interaction_count': 0
                 }
             
-            # Обновляем информацию о боте
+            # Обновляем информацию о бота
             self.known_bots[str(user.id)]['last_seen'] = datetime.now().isoformat()
             self.known_bots[str(user.id)]['interaction_count'] += 1
             
@@ -329,6 +329,7 @@ class DanilBot:
             "├ /admin_stats - Статистика\n"
             "├ /admin_list - Список админов\n"
             "├ /test_alert - Тест оповещение\n"
+            "├ /test_reminder - Тест напоминания\n"
             "└ /reload - Перезагрузить данные\n\n"
             
             "👑 <b>ROOT КОМАНДЫ:</b>\n"
@@ -709,6 +710,7 @@ class DanilBot:
                 "├ /admin_list - Список админов\n"
                 "├ /bot_stats - Статистика ботов\n"
                 "├ /test_alert - Тест оповещение\n"
+                "├ /test_reminder - Тест напоминания\n"
                 "└ /reload - Перезагрузить данные\n"
             )
             
@@ -1104,6 +1106,43 @@ class DanilBot:
         except Exception as e:
             logger.error(f"Ошибка в test_alert: {e}")
 
+    async def test_reminder(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Тест напоминания о капте (админы)"""
+        try:
+            if not self.is_admin(update.effective_user.id):
+                await update.message.reply_text("❌ <b>Доступ запрещен!</b>", parse_mode=ParseMode.HTML)
+                return
+            
+            # Создаем тестовый капт на текущее время + 31 минута
+            now = self.get_moscow_time()
+            test_time = (now + timedelta(minutes=31)).strftime('%H:%M')
+            test_date = now.strftime('%d.%m')
+            
+            test_event_code = "TEST"
+            self.events[test_event_code] = {
+                'name': 'ТЕСТОВЫЙ КАПТ',
+                'slots': '5',
+                'date': test_date,
+                'time': test_time,
+                'weapon_type': 'Лук',
+                'heal': 'Да',
+                'role': 'Защита',
+                'author': 'Тест',
+                'author_id': update.effective_user.id,
+                'created_at': datetime.now().isoformat()
+            }
+            
+            await update.message.reply_text(
+                f"🧪 <b>ТЕСТ НАПОМИНАНИЯ</b>\n\n"
+                f"📅 Создан тестовый капт на {test_time}\n"
+                f"⏰ Напоминание через 1 минуту в {(now + timedelta(minutes=1)).strftime('%H:%M')}\n\n"
+                f"💡 <i>Следите за консолью Replit для отладки</i>",
+                parse_mode=ParseMode.HTML
+            )
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ <b>Ошибка теста:</b> {e}", parse_mode=ParseMode.HTML)
+
     async def reload(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Перезагрузить данные"""
         try:
@@ -1147,32 +1186,48 @@ class DanilBot:
         try:
             now = self.get_moscow_time()
             current_date = now.strftime('%d.%m')
+            current_time = now.strftime('%H:%M')
+            
+            print(f"🔍 Проверка напоминаний: {current_date} {current_time}")  # ДЕБАГ
             
             # Проверяем все капты
             for event_code, event in self.events.items():
                 event_date = event['date']
-                event_time = event['time']
+                event_time_str = event['time']
+                
+                print(f"🔍 Проверка капта {event_code}: {event_date} {event_time_str}")  # ДЕБАГ
                 
                 # Проверяем, что капт сегодня
                 if event_date != current_date:
+                    print(f"❌ Капт {event_code} не сегодня")  # ДЕБАГ
                     continue
                 
                 # Парсим время капта
                 try:
-                    event_hour, event_minute = map(int, event_time.split(':'))
+                    event_hour, event_minute = map(int, event_time_str.split(':'))
                     
                     # Вычисляем время напоминания (за 30 минут)
-                    reminder_time = now.replace(hour=event_hour, minute=event_minute) - timedelta(minutes=30)
+                    event_datetime = now.replace(hour=event_hour, minute=event_minute, second=0, microsecond=0)
+                    reminder_datetime = event_datetime - timedelta(minutes=30)
+                    
+                    # Текущее время без секунд для сравнения
+                    current_datetime = now.replace(second=0, microsecond=0)
+                    
+                    print(f"⏰ Капт {event_code}:")  # ДЕБАГ
+                    print(f"   Время капта: {event_datetime.strftime('%H:%M')}")
+                    print(f"   Напоминание: {reminder_datetime.strftime('%H:%M')}") 
+                    print(f"   Сейчас: {current_datetime.strftime('%H:%M')}")
+                    print(f"   Совпадение: {current_datetime == reminder_datetime}")
                     
                     # Если текущее время совпадает с временем напоминания
-                    if (now.hour == reminder_time.hour and 
-                        now.minute == reminder_time.minute):
+                    if current_datetime == reminder_datetime:
+                        print(f"🚀 ОТПРАВЛЯЕМ напоминание для капта {event_code}!")  # ДЕБАГ
                         
                         reminder_text = (
                             "⏰ <b>НАПОМИНАНИЕ О КАПТЕ!</b>\n\n"
                             f"🎯 <b>{event['name']}</b>\n"
                             f"🔢 <b>Код:</b> <code>{event_code}</code>\n"
-                            f"📅 <b>Через 30 минут в:</b> {event_time} МСК\n"
+                            f"📅 <b>Через 30 минут в:</b> {event_time_str} МСК\n"
                             f"🎫 <b>Слоты:</b> {event['slots']}\n"
                             f"⚔️ <b>Оружие:</b> {event['weapon_type']}\n"
                             f"❤️ <b>Хил:</b> {event['heal']}\n"
@@ -1193,13 +1248,17 @@ class DanilBot:
                             except Exception as e:
                                 logger.error(f"Ошибка отправки напоминания в чат {chat_id}: {e}")
                                 self.alert_chats.discard(chat_id)
-                                
+                    else:
+                        print(f"⏳ Еще не время для напоминания капта {event_code}")  # ДЕБАГ
+                                    
                 except Exception as e:
                     logger.error(f"Ошибка обработки времени капта {event_code}: {e}")
+                    print(f"❌ Ошибка времени капта {event_code}: {e}")  # ДЕБАГ
                     continue
-                    
+                        
         except Exception as e:
             logger.error(f"Ошибка в send_kapt_reminders: {e}")
+            print(f"❌ Критическая ошибка в напоминаниях: {e}")  # ДЕБАГ
 
     # ==================== АВТОМАТИЧЕСКИЕ ОПОВЕЩЕНИЯ ====================
     
@@ -1210,6 +1269,7 @@ class DanilBot:
                 await asyncio.sleep(60)  # Проверяем каждую минуту
                 
                 now = self.get_moscow_time()
+                print(f"⏰ Планировщик работает: {now.strftime('%d.%m %H:%M:%S')}")  # ДЕБАГ
                 
                 # Утреннее оповещение в 10:00
                 if now.hour == 10 and now.minute == 0:
@@ -1590,6 +1650,7 @@ class DanilBot:
         application.add_handler(CommandHandler("admin_list", self.admin_list))
         application.add_handler(CommandHandler("bot_stats", self.bot_interaction_stats))
         application.add_handler(CommandHandler("test_alert", self.test_alert))
+        application.add_handler(CommandHandler("test_reminder", self.test_reminder))
         application.add_handler(CommandHandler("reload", self.reload))
         
         # Root команды
