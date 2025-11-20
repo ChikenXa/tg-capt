@@ -114,10 +114,6 @@ class DanilBot:
         """Проверка root прав"""
         return str(user_id) in self.root_users
 
-    def is_bot_user(self, user_id: int) -> bool:
-        """Проверка, является ли пользователь ботом"""
-        return str(user_id) in self.known_bots
-
     def generate_alliance_code(self):
         """Генерация кода союза"""
         while True:
@@ -129,10 +125,10 @@ class DanilBot:
         """Получить московское время"""
         return datetime.utcnow() + timedelta(hours=3)
 
-    # ==================== ОБРАБОТКА КОМАНД ОТ БОТОВ ====================
+    # ==================== ОБРАБОТКА СООБЩЕНИЙ ОТ БОТОВ ====================
     
-    async def handle_bot_pong(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработка команды /pong от других ботов"""
+    async def handle_bot_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработка сообщений от других ботов"""
         try:
             user = update.effective_user
             message = update.message
@@ -158,24 +154,22 @@ class DanilBot:
             # Получаем текст сообщения для анализа
             message_text = message.text or ""
             
-            # Формируем ответ
-            response_text = (
-                "🤖 <b>МЕЖБОТОВОЕ ВЗАИМОДЕЙСТВИЕ</b>\n\n"
-                f"🆔 <b>Бот:</b> {user.first_name or 'Unknown'}\n"
-                f"📛 <b>Username:</b> @{user.username or 'N/A'}\n"
-                f"💬 <b>Сообщение:</b> {message_text[:100]}{'...' if len(message_text) > 100 else ''}\n\n"
-                f"✅ <b>ДанилBot активен и работает</b>\n"
-                f"⏰ <b>Время МСК:</b> {self.get_moscow_time().strftime('%H:%M:%S')}\n"
-                f"📊 <b>Статус:</b> Все системы в норме"
-            )
-            
-            # Отправляем ответ
-            await message.reply_text(response_text, parse_mode=ParseMode.HTML)
-            
-            logger.info(f"🤖 Ответ на /pong от бота {user.username} (ID: {user.id})")
-            
+            # Реагируем на команду /pong
+            if message_text.strip() == '/pong':
+                response_text = (
+                    "🤖 <b>МЕЖБОТОВОЕ ВЗАИМОДЕЙСТВИЕ</b>\n\n"
+                    f"🆔 <b>Бот:</b> {user.first_name or 'Unknown'}\n"
+                    f"📛 <b>Username:</b> @{user.username or 'N/A'}\n"
+                    f"⏰ <b>Время МСК:</b> {self.get_moscow_time().strftime('%H:%M:%S')}\n\n"
+                    f"✅ <b>ДанилBot активен и работает</b>\n"
+                    f"📊 <b>Статус:</b> Все системы в норме"
+                )
+                
+                await message.reply_text(response_text, parse_mode=ParseMode.HTML)
+                logger.info(f"🤖 Ответил на /pong от бота {user.username} (ID: {user.id})")
+                
         except Exception as e:
-            logger.error(f"Ошибка обработки /pong от бота: {e}")
+            logger.error(f"Ошибка обработки сообщения от бота: {e}")
 
     async def bot_interaction_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Статистика взаимодействий с ботами (только для админов)"""
@@ -219,12 +213,6 @@ class DanilBot:
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Главное меню"""
         user = update.effective_user
-        
-        # Если команда от бота, обрабатываем специально
-        if user.is_bot:
-            await self.handle_bot_pong(update, context)
-            return
-            
         self.alert_chats.add(update.effective_chat.id)
         
         welcome_text = (
@@ -252,7 +240,7 @@ class DanilBot:
             "└ Отвечает на команду /pong от других ботов\n\n"
             
             "🔒 <b>Бот работает только в группах!</b>\n\n"
-            "👨‍💻 <b>Разработано Данилом</b> | @prodDanil"
+            "👨‍💻 <b>Разработано Данилом</b> | @ChikenXa"
         )
         
         await update.message.reply_text(welcome_text, parse_mode=ParseMode.HTML)
@@ -297,7 +285,7 @@ class DanilBot:
             "🔔 <b>АВТО-ОПОВЕЩЕНИЯ:</b>\n"
             "└ См. расписание в /start\n\n"
             
-            "💡 <b>Для помощи:</b> @prodDanil"
+            "💡 <b>Для помощи:</b> @ChikenXa"
         )
         
         await update.message.reply_text(help_text, parse_mode=ParseMode.HTML)
@@ -305,13 +293,6 @@ class DanilBot:
     async def pong(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Проверка работы бота"""
         try:
-            user = update.effective_user
-            
-            # Если команда от бота, обрабатываем специально
-            if user.is_bot:
-                await self.handle_bot_pong(update, context)
-                return
-                
             if update.effective_chat.type == 'private':
                 await update.message.reply_text("❌ Эта команда работает только в группах!")
                 return
@@ -351,10 +332,6 @@ class DanilBot:
     async def create_event(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Создать капт"""
         try:
-            # Проверяем, что не от бота
-            if update.effective_user.is_bot:
-                return
-                
             if len(context.args) < 8:
                 help_text = (
                     "🎯 <b>СОЗДАНИЕ КАПТА</b>\n\n"
@@ -442,10 +419,6 @@ class DanilBot:
     async def kapt_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Показать все капты"""
         try:
-            # Проверяем, что не от бота
-            if update.effective_user.is_bot:
-                return
-                
             if not self.events:
                 message = await update.message.reply_text(
                     "📭 <b>Активных каптов нет</b>\n\n"
@@ -482,10 +455,6 @@ class DanilBot:
     async def show_hacks(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Показать расписание особняков"""
         try:
-            # Проверяем, что не от бота
-            if update.effective_user.is_bot:
-                return
-                
             if update.effective_chat.type == 'private':
                 await update.message.reply_text("❌ Эта команда работает только в группах!")
                 return
@@ -505,10 +474,6 @@ class DanilBot:
     async def next_hack(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Ближайшая особа"""
         try:
-            # Проверяем, что не от бота
-            if update.effective_user.is_bot:
-                return
-                
             if update.effective_chat.type == 'private':
                 await update.message.reply_text("❌ Эта команда работает только в группах!")
                 return
@@ -570,10 +535,6 @@ class DanilBot:
     async def show_alliances(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Показать союзы"""
         try:
-            # Проверяем, что не от бота
-            if update.effective_user.is_bot:
-                return
-                
             if update.effective_chat.type == 'private':
                 await update.message.reply_text("❌ Эта команда работает только в группах!")
                 return
@@ -606,10 +567,6 @@ class DanilBot:
     async def admin_panel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Админ-панель"""
         try:
-            # Проверяем, что не от бота
-            if update.effective_user.is_bot:
-                return
-                
             if update.effective_chat.type == 'private':
                 await update.message.reply_text("❌ Админ-панель работает только в группах!")
                 return
@@ -635,10 +592,6 @@ class DanilBot:
                 return
                 
             if not update.message or not update.message.text:
-                return
-                
-            # Пропускаем сообщения от ботов
-            if update.effective_user.is_bot:
                 return
                 
             user_id = update.effective_user.id
@@ -716,10 +669,6 @@ class DanilBot:
     async def add_admin(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Добавить админа (только root)"""
         try:
-            # Проверяем, что не от бота
-            if update.effective_user.is_bot:
-                return
-                
             if update.effective_chat.type == 'private':
                 await update.message.reply_text("❌ Эта команда работает только в группах!")
                 return
@@ -798,10 +747,6 @@ class DanilBot:
     async def remove_admin(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Удалить админа (только root)"""
         try:
-            # Проверяем, что не от бота
-            if update.effective_user.is_bot:
-                return
-                
             if update.effective_chat.type == 'private':
                 await update.message.reply_text("❌ Эта команда работает только в группах!")
                 return
@@ -862,10 +807,6 @@ class DanilBot:
     async def add_alliance(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Добавить союз"""
         try:
-            # Проверяем, что не от бота
-            if update.effective_user.is_bot:
-                return
-                
             if update.effective_chat.type == 'private':
                 await update.message.reply_text("❌ Эта команда работает только в группах!")
                 return
@@ -908,10 +849,6 @@ class DanilBot:
     async def remove_alliance(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Удалить союз"""
         try:
-            # Проверяем, что не от бота
-            if update.effective_user.is_bot:
-                return
-                
             if update.effective_chat.type == 'private':
                 await update.message.reply_text("❌ Эта команда работает только в группах!")
                 return
@@ -949,10 +886,6 @@ class DanilBot:
     async def clear_alliances(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Очистить все союзы"""
         try:
-            # Проверяем, что не от бота
-            if update.effective_user.is_bot:
-                return
-                
             if update.effective_chat.type == 'private':
                 await update.message.reply_text("❌ Эта команда работает только в группах!")
                 return
@@ -975,10 +908,6 @@ class DanilBot:
     async def delete_event_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Удалить капт"""
         try:
-            # Проверяем, что не от бота
-            if update.effective_user.is_bot:
-                return
-                
             user = update.effective_user
 
             if not self.is_admin(user.id):
@@ -1026,10 +955,6 @@ class DanilBot:
     async def admin_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Статистика бота"""
         try:
-            # Проверяем, что не от бота
-            if update.effective_user.is_bot:
-                return
-                
             if update.effective_chat.type == 'private':
                 await update.message.reply_text("❌ Эта команда работает только в группах!")
                 return
@@ -1067,10 +992,6 @@ class DanilBot:
     async def admin_list(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Список админов"""
         try:
-            # Проверяем, что не от бота
-            if update.effective_user.is_bot:
-                return
-                
             if update.effective_chat.type == 'private':
                 await update.message.reply_text("❌ Эта команда работает только в группах!")
                 return
@@ -1105,10 +1026,6 @@ class DanilBot:
     async def test_alert(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Тестовое оповещение"""
         try:
-            # Проверяем, что не от бота
-            if update.effective_user.is_bot:
-                return
-                
             if update.effective_chat.type == 'private':
                 await update.message.reply_text("❌ Эта команда работает только в группах!")
                 return
@@ -1131,10 +1048,6 @@ class DanilBot:
     async def reload(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Перезагрузить данные"""
         try:
-            # Проверяем, что не от бота
-            if update.effective_user.is_bot:
-                return
-                
             if update.effective_chat.type == 'private':
                 await update.message.reply_text("❌ Эта команда работает только в группах!")
                 return
@@ -1376,7 +1289,7 @@ class DanilBot:
                 "🌜 <b>Спокойной ночи! Всем хорошо выспаться!</b>\n"
                 "🖥️ <b>Сервера работают в фоновом режиме...</b>\n"
                 "🧹 <b>Утренняя очистка в 6:00 МСК</b>\n\n"
-                "👨‍💻 <b>Разработано Данилом</b> | @prodDanil"
+                "👨‍💻 <b>Разработано Данилом</b> | @ChikenXa"
             )
             
             # Отправляем во все активные чаты
@@ -1560,6 +1473,12 @@ class DanilBot:
         application.add_handler(CommandHandler("add_admin", self.add_admin))
         application.add_handler(CommandHandler("remove_admin", self.remove_admin))
         
+        # Обработчик сообщений от других ботов (ДОБАВЛЕНО!)
+        application.add_handler(MessageHandler(
+            filters.TEXT & filters.ChatType.GROUPS, 
+            self.handle_bot_message
+        ))
+        
         # Обработчик сообщений с паролем
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
 
@@ -1595,7 +1514,7 @@ class DanilBot:
         print("👑 ПАРОЛЬ ROOT: 1508")
         print("🔧 KEEP-ALIVE: Активен")
         print("💬 РЕЖИМ: Только группы")
-        print("👨‍💻 РАЗРАБОТЧИК: Данил | @prodDanil")
+        print("👨‍💻 РАЗРАБОТЧИК: Данил | @ChikenXa")
         print("✨ " + "="*50)
         
         application.run_polling()
