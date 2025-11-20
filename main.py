@@ -8,13 +8,14 @@ from flask import Flask
 import threading
 import time
 import requests
+import random
 
-# ==================== KEEP ALIVE SYSTEM ====================
+# ==================== ENHANCED KEEP ALIVE SYSTEM ====================
 from flask import Flask as KeepAliveApp
 from threading import Thread as KeepAliveThread
 import time as keep_alive_time
 
-# Keep-alive сервер
+# Улучшенный keep-alive сервер
 keep_alive_flask = KeepAliveApp('keep_alive')
 
 @keep_alive_flask.route('/')
@@ -23,36 +24,118 @@ def keep_alive_home():
 
 @keep_alive_flask.route('/health')
 def health_check():
-    return "✅ OK", 200
+    return {"status": "active", "timestamp": time.time(), "events": len(events)}, 200
 
 @keep_alive_flask.route('/ping')
 def ping():
     return "🏓 PONG", 200
 
-def run_keep_alive_server():
-    keep_alive_flask.run(host='0.0.0.0', port=8080)
+@keep_alive_flask.route('/status')
+def status():
+    return {
+        "status": "online", 
+        "bot": "CAPT BOT", 
+        "timestamp": datetime.now().isoformat(),
+        "events_count": len(events),
+        "active_chats": len(set(chat_id for chat_id, _ in event_messages.values()))
+    }
 
-# Функция авто-пинга
-def auto_ping_self():
+def run_keep_alive_server():
+    keep_alive_flask.run(host='0.0.0.0', port=8080, debug=False)
+
+# Множественные пинги для разных сервисов
+def multi_ping_services():
+    ping_urls = [
+        "https://www.google.com",
+        "https://www.github.com", 
+        "https://www.telegram.org",
+        "https://www.python.org"
+    ]
+    
+    while True:
+        try:
+            # Пингуем случайный внешний сервис
+            url = random.choice(ping_urls)
+            response = requests.get(url, timeout=10)
+            current_time = datetime.now().strftime('%H:%M:%S')
+            print(f"🌐 External ping to {url}: {response.status_code} at {current_time}")
+        except Exception as e:
+            current_time = datetime.now().strftime('%H:%M:%S')
+            print(f"⚠️ External ping failed: {e} at {current_time}")
+        
+        keep_alive_time.sleep(180)  # 3 минуты
+
+# Агрессивный self-ping
+def aggressive_self_ping():
     while True:
         try:
             # Получаем URL Replit автоматически
             repl_slug = os.environ.get('REPL_SLUG', 'tg-capt')
             repl_owner = os.environ.get('REPL_OWNER', 'chikenxa')
-            url = f"https://{repl_slug}.{repl_owner}.repl.co"
-            response = requests.get(url, timeout=10)
-            current_time = datetime.now().strftime('%H:%M:%S')
-            print(f"🟢 Keep-alive ping: {current_time} - Status: {response.status_code}")
+            base_url = f"https://{repl_slug}.{repl_owner}.repl.co"
+            
+            # Пингуем разные эндпоинты
+            endpoints = ['/', '/health', '/ping', '/status']
+            for endpoint in endpoints:
+                try:
+                    url = base_url + endpoint
+                    response = requests.get(url, timeout=15)
+                    current_time = datetime.now().strftime('%H:%M:%S')
+                    print(f"🟢 Self-ping {endpoint}: {response.status_code} at {current_time}")
+                    keep_alive_time.sleep(3)  # Пауза между запросами
+                except Exception as e:
+                    current_time = datetime.now().strftime('%H:%M:%S')
+                    print(f"🔴 Self-ping failed {endpoint}: {e} at {current_time}")
+        
         except Exception as e:
             current_time = datetime.now().strftime('%H:%M:%S')
-            print(f"⚠️  Keep-alive failed: {e} at {current_time}")
-        keep_alive_time.sleep(240)  # 4 минуты
+            print(f"❌ Critical ping error: {e} at {current_time}")
+        
+        keep_alive_time.sleep(150)  # 2.5 минуты между циклами
 
-# Запускаем keep-alive системы
-KeepAliveThread(target=run_keep_alive_server, daemon=True).start()
-KeepAliveThread(target=auto_ping_self, daemon=True).start()
+# Фоновая активность бота
+def background_activity():
+    while True:
+        try:
+            # Создаем фоновую активность
+            current_time = datetime.now().strftime('%H:%M:%S')
+            print(f"🔄 Background activity at {current_time}")
+            
+            # Периодически проверяем состояние
+            if len(events) > 0:
+                print(f"📊 Active events: {len(events)}")
+                for code, event in events.items():
+                    print(f"   - {code}: {event['name']} ({len(event['participants'])}/{event['slots']})")
+            
+        except Exception as e:
+            current_time = datetime.now().strftime('%H:%M:%S')
+            print(f"⚠️ Background activity error: {e} at {current_time}")
+        
+        keep_alive_time.sleep(300)  # 5 минут
 
-print("🔧 Keep-alive system started!")
+# Запускаем все системы
+def start_keep_alive_systems():
+    print("🚀 Starting enhanced keep-alive systems...")
+    
+    # Keep-alive сервер
+    KeepAliveThread(target=run_keep_alive_server, daemon=True).start()
+    time.sleep(2)
+    
+    # Множественные пинги
+    KeepAliveThread(target=multi_ping_services, daemon=True).start()
+    time.sleep(1)
+    
+    # Агрессивный self-ping
+    KeepAliveThread(target=aggressive_self_ping, daemon=True).start()
+    time.sleep(1)
+    
+    # Фоновая активность
+    KeepAliveThread(target=background_activity, daemon=True).start()
+    
+    print("✅ All keep-alive systems started!")
+
+# Запускаем систему
+start_keep_alive_systems()
 # ==================== END KEEP ALIVE SYSTEM ====================
 
 # Основной Flask app (оставляем для обратной совместимости)
@@ -63,7 +146,7 @@ def home():
     return "🎮 CAPT BOT is running!"
 
 @app.route('/status')
-def status():
+def flask_status():
     return {
         "status": "online",
         "bot": "CAPT BOT",
@@ -1315,7 +1398,7 @@ def main():
     application.add_handler(CommandHandler("addadmin", add_admin))
     application.add_handler(CommandHandler("removeadmin", remove_admin))
     application.add_handler(CommandHandler("listadmins", list_admins))
-    application.add_handler(CommandHandler("goodnight", good_night_command))  # НОВАЯ КОМАНДА
+    application.add_handler(CommandHandler("goodnight", good_night_command))
     application.add_handler(CommandHandler("create", create_event))
     application.add_handler(CommandHandler("go", go_command))
     application.add_handler(CommandHandler("ex", ex_command))
@@ -1338,13 +1421,15 @@ def main():
     print("🕐 Ежедневный статус в 14:00 МСК (с закреплением)!")
     print("🌙 Спокойной ночи в 23:00 МСК (очистка каптов)!")
     print("🧹 Полная очистка системы в 6:00 МСК!")
-    print("👑 НОВАЯ КОМАНДА: /goodnight - ручной вызов спокойной ночи (только root)")
+    print("👑 Команда /goodnight - ручной вызов спокойной ночи (только root)")
     print("🏓 Команда /ping доступна!")
     print("📋 Команда /commands доступна!")
     print("⏰ Московское время: UTC+3 (постоянно)")
-    print("🔧 Keep-alive system: ACTIVE (бот будет работать 24/7)")
-    
-    application.run_polling()
+    print("🔧 ENHANCED Keep-alive system: ACTIVE")
+    print("🌐 Множественные пинги: Google, GitHub, Telegram, Python.org")
+    print("🔄 Агрессивный self-ping: каждые 2.5 минуты")
+    print("📊 Фоновая активность: каждые 5 минут")
+    print("🚀 Все системы запущены! Бот пытается работать 24/7...")
 
 if __name__ == "__main__":
     main()
