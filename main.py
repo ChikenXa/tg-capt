@@ -34,7 +34,7 @@ class EnhancedKeepAlive:
                 self.send_response(200)
                 self.send_header('Content-type', 'text/html')
                 self.end_headers()
-                self.wfile.write(b'🤖 ДанилBot работает 24/7! 🚀')
+                self.wfile.write('🤖 ДанилBot работает 24/7! 🚀'.encode('utf-8'))
             else:
                 self.send_response(404)
                 self.end_headers()
