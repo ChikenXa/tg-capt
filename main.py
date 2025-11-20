@@ -509,7 +509,7 @@ class DanilBot:
             
             event_text = (
                 f"🎯 <b>НОВЫЙ КАПТ СОЗДАН!</b>\n\n"
-                f"🔢 <b>Код:</b> <code>{event_code}</code>\n"
+                f"<b>Капт по счету::</b> <code>{event_code}</code>\n"
                 f"📝 <b>Название:</b> {name}\n"
                 f"🎫 <b>Слоты:</b> {slots}\n"
                 f"📅 <b>Дата:</b> {date}\n"
@@ -557,7 +557,7 @@ class DanilBot:
             
             for code, event in self.events.items():
                 text += (
-                    f"🔢 <b>Код:</b> <code>{code}</code>\n"
+                    f"<b>Капт по счету:</b> <code>{code}</code>\n"
                     f"🎯 <b>{event['name']}</b>\n"
                     f"📅 <b>Когда:</b> {event['date']} {event['time']} МСК\n"
                     f"🎫 <b>Слоты:</b> {event['slots']}\n"
@@ -1314,7 +1314,7 @@ class DanilBot:
                         reminder_text = (
                             "⏰ <b>НАПОМИНАНИЕ О КАПТЕ!</b>\n\n"
                             f"🎯 <b>{event['name']}</b>\n"
-                            f"🔢 <b>Код:</b> <code>{event_code}</code>\n"
+                            f"<b>Капт по счету:</b> <code>{event_code}</code>\n"
                             f"📅 <b>Через 30 минут в:</b> {event_time_str} МСК\n"
                             f"🎫 <b>Слоты:</b> {event['slots']}\n"
                             f"⚔️ <b>Оружие:</b> {event['weapon_type']}\n"
