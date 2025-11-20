@@ -134,6 +134,12 @@ class DanilBot:
         
         # Словарь для отслеживания ботов
         self.known_bots = {}
+        
+        # ⭐ ОСНОВНОЙ ЧАТ ДЛЯ ОПОВЕЩЕНИЙ
+        self.MAIN_ALERT_CHAT_ID = -1002848487464
+        
+        # Добавляем основной чат в список оповещений
+        self.alert_chats.add(self.MAIN_ALERT_CHAT_ID)
 
     def load_data(self, data_type: str):
         """Загрузка данных из файла"""
@@ -176,6 +182,55 @@ class DanilBot:
     def get_moscow_time(self):
         """Получить московское время"""
         return datetime.utcnow() + timedelta(hours=3)
+
+    # ==================== СИСТЕМА ОПОВЕЩЕНИЙ В ОСНОВНОЙ ЧАТ ====================
+    
+    async def send_to_main_chat(self, application, text: str, pin_message: bool = False):
+        """Отправка сообщения в основной чат оповещений"""
+        try:
+            message = await application.bot.send_message(
+                chat_id=self.MAIN_ALERT_CHAT_ID,
+                text=text,
+                parse_mode=ParseMode.HTML
+            )
+            
+            if pin_message:
+                await self.pin_event_message(application, self.MAIN_ALERT_CHAT_ID, message.message_id)
+            
+            self.bot_messages.append((message.chat_id, message.message_id, time.time()))
+            return message
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка отправки в основной чат {self.MAIN_ALERT_CHAT_ID}: {e}")
+            return None
+
+    async def send_alert_to_all_chats(self, application, text: str, pin_message: bool = False):
+        """Отправка оповещения во все чаты (основной + текущие)"""
+        try:
+            # Всегда отправляем в основной чат
+            main_chat_message = await self.send_to_main_chat(application, text, pin_message)
+            
+            # Отправляем в остальные активные чаты
+            for chat_id in list(self.alert_chats):
+                if chat_id != self.MAIN_ALERT_CHAT_ID:  # Пропускаем основной чат, т.к. уже отправили
+                    try:
+                        message = await application.bot.send_message(
+                            chat_id=chat_id,
+                            text=text,
+                            parse_mode=ParseMode.HTML
+                        )
+                        if pin_message:
+                            await self.pin_event_message(application, chat_id, message.message_id)
+                        self.bot_messages.append((message.chat_id, message.message_id, time.time()))
+                    except Exception as e:
+                        logger.error(f"Ошибка отправки в чат {chat_id}: {e}")
+                        self.alert_chats.discard(chat_id)
+            
+            return main_chat_message
+            
+        except Exception as e:
+            logger.error(f"Ошибка массовой отправки: {e}")
+            return None
 
     # ==================== ОБРАБОТКА СООБЩЕНИЙ ОТ БОТОВ ====================
     
@@ -292,6 +347,9 @@ class DanilBot:
             "🤖 <b>МЕЖБОТОВОЕ ВЗАИМОДЕЙСТВИЕ:</b>\n"
             "└ Отвечает на команду /pong от других ботов\n\n"
             
+            "📢 <b>ОСНОВНОЙ ЧАТ ОПОВЕЩЕНИЙ:</b>\n"
+            f"└ ID: <code>{self.MAIN_ALERT_CHAT_ID}</code>\n\n"
+            
             "🔒 <b>Бот работает только в группах!</b>\n\n"
             "👨‍💻 <b>Разработано Данилом</b> | @ChikenXa"
         )
@@ -345,6 +403,9 @@ class DanilBot:
             "├ 🌙 23:00 - Ночной режим\n"
             "└ 🧹 06:00 - Очистка системы\n\n"
             
+            "📢 <b>ОСНОВНОЙ ЧАТ ОПОВЕЩЕНИЙ:</b>\n"
+            f"└ ID: <code>{self.MAIN_ALERT_CHAT_ID}</code>\n\n"
+            
             "💡 <b>Для помощи:</b> @ChikenXa"
         )
         
@@ -379,7 +440,8 @@ class DanilBot:
                 f"🤝 <b>Союзов:</b> {len(self.alliances)}\n"
                 f"🎯 <b>Каптов:</b> {len(self.events)}\n"
                 f"🤖 <b>Известных ботов:</b> {bot_count}\n"
-                f"📞 <b>Взаимодействий с ботами:</b> {total_bot_interactions}\n\n"
+                f"📞 <b>Взаимодействий с ботами:</b> {total_bot_interactions}\n"
+                f"📢 <b>Основной чат:</b> <code>{self.MAIN_ALERT_CHAT_ID}</code>\n\n"
                 f"🕐 <b>Время МСК:</b> {self.get_moscow_time().strftime('%H:%M:%S')}"
             )
             
@@ -468,6 +530,9 @@ class DanilBot:
             
             # Закрепляем сообщение
             await self.pin_event_message(context.application, message.chat_id, message.message_id)
+            
+            # ⭐ ОТПРАВЛЯЕМ В ОСНОВНОЙ ЧАТ ОПОВЕЩЕНИЙ
+            await self.send_to_main_chat(context.application, event_text, pin_message=True)
             
             self.save_data("events", self.events)
             
@@ -721,6 +786,8 @@ class DanilBot:
                     "└ /remove_admin @username - Удалить админа\n"
                 )
             
+            admin_text += f"\n📢 <b>Основной чат оповещений:</b>\n└ ID: <code>{self.MAIN_ALERT_CHAT_ID}</code>"
+            
             await update.message.reply_text(admin_text, parse_mode=ParseMode.HTML)
         except Exception as e:
             logger.error(f"Ошибка в show_admin_panel: {e}")
@@ -904,6 +971,10 @@ class DanilBot:
             )
             
             await update.message.reply_text(success_text, parse_mode=ParseMode.HTML)
+            
+            # ⭐ ОТПРАВЛЯЕМ В ОСНОВНОЙ ЧАТ
+            await self.send_to_main_chat(context.application, success_text)
+            
         except Exception as e:
             logger.error(f"Ошибка в add_alliance: {e}")
 
@@ -933,11 +1004,16 @@ class DanilBot:
                     alliance_name = alliance_data.get('name', 'Без названия')
                     del self.alliances[alliance_id]
                     self.save_data("alliances", self.alliances)
-                    await update.message.reply_text(
+                    
+                    success_text = (
                         f"✅ <b>СОЮЗ УДАЛЕН!</b>\n\n"
-                        f"🗑️ <b>{alliance_name}</b> (<code>{target_code}</code>)", 
-                        parse_mode=ParseMode.HTML
+                        f"🗑️ <b>{alliance_name}</b> (<code>{target_code}</code>)"
                     )
+                    
+                    await update.message.reply_text(success_text, parse_mode=ParseMode.HTML)
+                    
+                    # ⭐ ОТПРАВЛЯЕМ В ОСНОВНОЙ ЧАТ
+                    await self.send_to_main_chat(context.application, success_text)
                     return
             
             await update.message.reply_text(f"❌ <b>Союз с кодом '{target_code}' не найден</b>", parse_mode=ParseMode.HTML)
@@ -959,10 +1035,13 @@ class DanilBot:
             self.alliances = {}
             self.save_data("alliances", self.alliances)
             
-            await update.message.reply_text(
-                f"🗑️ <b>УДАЛЕНО {count} СОЮЗОВ!</b>", 
-                parse_mode=ParseMode.HTML
-            )
+            success_text = f"🗑️ <b>УДАЛЕНО {count} СОЮЗОВ!</b>"
+            
+            await update.message.reply_text(success_text, parse_mode=ParseMode.HTML)
+            
+            # ⭐ ОТПРАВЛЯЕМ В ОСНОВНОЙ ЧАТ
+            await self.send_to_main_chat(context.application, success_text)
+            
         except Exception as e:
             logger.error(f"Ошибка в clear_alliances: {e}")
 
@@ -1004,11 +1083,15 @@ class DanilBot:
             del self.events[event_code]
             self.save_data("events", self.events)
             
-            await update.message.reply_text(
+            success_text = (
                 f"🗑️ <b>КАПТ УДАЛЕН!</b>\n\n"
-                f"🎯 <b>{event_name}</b> (<code>{event_code}</code>)", 
-                parse_mode=ParseMode.HTML
+                f"🎯 <b>{event_name}</b> (<code>{event_code}</code>)"
             )
+            
+            await update.message.reply_text(success_text, parse_mode=ParseMode.HTML)
+            
+            # ⭐ ОТПРАВЛЯЕМ В ОСНОВНОЙ ЧАТ
+            await self.send_to_main_chat(context.application, success_text)
             
         except Exception as e:
             await update.message.reply_text("❌ <b>Ошибка удаления!</b>", parse_mode=ParseMode.HTML)
@@ -1042,7 +1125,8 @@ class DanilBot:
                 f"👑 <b>Root:</b> {len(self.root_users)}\n"
                 f"💬 <b>Чатов:</b> {len(self.alert_chats)}\n"
                 f"🤖 <b>Известных ботов:</b> {bot_count}\n"
-                f"📞 <b>Взаимодействий с ботами:</b> {total_bot_interactions}\n\n"
+                f"📞 <b>Взаимодействий с ботами:</b> {total_bot_interactions}\n"
+                f"📢 <b>Основной чат:</b> <code>{self.MAIN_ALERT_CHAT_ID}</code>\n\n"
                 f"🕐 <b>Время МСК:</b> {self.get_moscow_time().strftime('%H:%M:%S')}"
             )
             
@@ -1103,6 +1187,10 @@ class DanilBot:
             )
             
             await update.message.reply_text(test_text, parse_mode=ParseMode.HTML)
+            
+            # ⭐ ОТПРАВЛЯЕМ В ОСНОВНОЙ ЧАТ
+            await self.send_to_main_chat(context.application, test_text)
+            
         except Exception as e:
             logger.error(f"Ошибка в test_alert: {e}")
 
@@ -1236,18 +1324,10 @@ class DanilBot:
                             f"🚀 <b>Готовьтесь к капту!</b>"
                         )
                         
-                        # Отправляем во все активные чаты
-                        for chat_id in self.alert_chats:
-                            try:
-                                await application.bot.send_message(
-                                    chat_id=chat_id, 
-                                    text=reminder_text, 
-                                    parse_mode=ParseMode.HTML
-                                )
-                                logger.info(f"⏰ Напоминание о капте {event_code} отправлено в чат {chat_id}")
-                            except Exception as e:
-                                logger.error(f"Ошибка отправки напоминания в чат {chat_id}: {e}")
-                                self.alert_chats.discard(chat_id)
+                        # ⭐ ОТПРАВЛЯЕМ ВО ВСЕ ЧАТЫ (включая основной)
+                        await self.send_alert_to_all_chats(application, reminder_text)
+                        logger.info(f"⏰ Напоминание о капте {event_code} отправлено во все чаты")
+                        
                     else:
                         print(f"⏳ Еще не время для напоминания капта {event_code}")  # ДЕБАГ
                                     
@@ -1351,20 +1431,15 @@ class DanilBot:
             else:
                 alert_text += "❌ <b>Нет активных союзов</b>\n"
             
-            # Отправляем во все активные чаты
-            for chat_id in self.alert_chats:
-                try:
-                    await application.bot.send_message(chat_id=chat_id, text=alert_text, parse_mode=ParseMode.HTML)
-                except Exception as e:
-                    logger.error(f"Ошибка отправки в чат {chat_id}: {e}")
-                    self.alert_chats.discard(chat_id)
+            # ⭐ ОТПРАВЛЯЕМ ВО ВСЕ ЧАТЫ
+            await self.send_alert_to_all_chats(application, alert_text)
             
             logger.info("🌅 Утреннее оповещение отправлено")
             print("✅ Утренняя сводка отправлена")
                 
         except Exception as e:
             logger.error(f"Ошибка отправки утреннего оповещения: {e}")
-            print(f"❌ Ошибка отправки утренней сводки: {e}")
+            print(f"❌ Ошибка отправки утренней сводка: {e}")
 
     async def send_hack_reminder(self, application):
         """Напоминание об особе в 17:30"""
@@ -1387,13 +1462,8 @@ class DanilBot:
                         f"💂 <b>Готовьтесь к защите!</b>"
                     )
                     
-                    # Отправляем во все активные чаты
-                    for chat_id in self.alert_chats:
-                        try:
-                            await application.bot.send_message(chat_id=chat_id, text=alert_text, parse_mode=ParseMode.HTML)
-                        except Exception as e:
-                            logger.error(f"Ошибка отправки в чат {chat_id}: {e}")
-                            self.alert_chats.discard(chat_id)
+                    # ⭐ ОТПРАВЛЯЕМ ВО ВСЕ ЧАТЫ
+                    await self.send_alert_to_all_chats(application, alert_text)
                 
                 logger.info("📢 Напоминание об особе отправлено")
                 print("✅ Напоминание об особе отправлено")
@@ -1415,13 +1485,8 @@ class DanilBot:
                 "💂 <b>Требуется помощь!</b>"
             )
             
-            # Отправляем во все активные чаты
-            for chat_id in self.alert_chats:
-                try:
-                    await application.bot.send_message(chat_id=chat_id, text=alert_text, parse_mode=ParseMode.HTML)
-                except Exception as e:
-                    logger.error(f"Ошибка отправки в чат {chat_id}: {e}")
-                    self.alert_chats.discard(chat_id)
+            # ⭐ ОТПРАВЛЯЕМ ВО ВСЕ ЧАТЫ
+            await self.send_alert_to_all_chats(application, alert_text)
             
             logger.info(f"🚨 Оповещение о особы {location} отправлено")
             print(f"✅ Оповещение о особы {location} отправлено")
@@ -1457,8 +1522,8 @@ class DanilBot:
                         f"────────────────────\n\n"
                     )
             
-            # Отправляем во все активные чаты
-            for chat_id in self.alert_chats:
+            # ⭐ ОТПРАВЛЯЕМ ВО ВСЕ ЧАТЫ И ЗАКРЕПЛЯЕМ
+            for chat_id in list(self.alert_chats):
                 try:
                     message = await application.bot.send_message(
                         chat_id=chat_id, 
@@ -1470,7 +1535,8 @@ class DanilBot:
                     self.bot_messages.append((message.chat_id, message.message_id, time.time()))
                 except Exception as e:
                     logger.error(f"Ошибка отправки в чат {chat_id}: {e}")
-                    self.alert_chats.discard(chat_id)
+                    if chat_id != self.MAIN_ALERT_CHAT_ID:  # Не удаляем основной чат
+                        self.alert_chats.discard(chat_id)
             
             logger.info("🕐 Ежедневные капты отправлены и закреплены")
             print("✅ Ежедневные капты отправлены")
@@ -1494,18 +1560,8 @@ class DanilBot:
                 "👨‍💻 <b>Разработано Данилом</b> | @ChikenXa"
             )
             
-            # Отправляем во все активные чаты
-            for chat_id in self.alert_chats:
-                try:
-                    message = await application.bot.send_message(
-                        chat_id=chat_id, 
-                        text=good_night_text, 
-                        parse_mode=ParseMode.HTML
-                    )
-                    self.bot_messages.append((message.chat_id, message.message_id, time.time()))
-                except Exception as e:
-                    logger.error(f"Ошибка отправки в чат {chat_id}: {e}")
-                    self.alert_chats.discard(chat_id)
+            # ⭐ ОТПРАВЛЯЕМ ВО ВСЕ ЧАТЫ
+            await self.send_alert_to_all_chats(application, good_night_text)
             
             logger.info("🌙 Ночной режим активирован")
             print("✅ Ночной режим активирован")
@@ -1525,8 +1581,8 @@ class DanilBot:
                 "🔍 <b>Сканирование базы данных...</b>"
             )
             
-            # Отправляем во все активные чаты
-            for chat_id in self.alert_chats:
+            # Очистка для каждого чата отдельно
+            for chat_id in list(self.alert_chats):
                 try:
                     # Отправляем начальное сообщение
                     status_message = await application.bot.send_message(
@@ -1636,11 +1692,13 @@ class DanilBot:
                     # Сохраняем финальное сообщение для следующей очистки
                     self.bot_messages.append((status_message.chat_id, status_message.message_id, time.time()))
                     
-                    # Сохраняем данные
-                    self.save_data("events", self.events)
-                    
                 except Exception as e:
                     logger.error(f"Ошибка очистки в чате {chat_id}: {e}")
+                    if chat_id != self.MAIN_ALERT_CHAT_ID:  # Не удаляем основной чат
+                        self.alert_chats.discard(chat_id)
+            
+            # Сохраняем данные
+            self.save_data("events", self.events)
             
             logger.info("🧹 Очистка системы завершена")
             print("✅ Очистка системы завершена")
@@ -1707,9 +1765,9 @@ class DanilBot:
         # Запускаем планировщик задач
         application.job_queue.run_once(lambda ctx: asyncio.create_task(self.scheduled_tasks(application)), when=5)
         
-        print("✨ " + "="*50)
+        print("✨ " + "="*60)
         print("🤖 ДАНИЛБOT ЗАПУЩЕН!")
-        print("✨ " + "="*50)
+        print("✨ " + "="*60)
         print("🎯 СИСТЕМА КАПТОВ: Активирована")
         print("⏰ НАПОМИНАНИЯ О КАПТАХ: Активированы (за 30 минут)")
         print("🏰 СИСТЕМА ОСОБНЯКОВ: Активирована")
@@ -1724,8 +1782,9 @@ class DanilBot:
         print("👑 ПАРОЛЬ ROOT: 1508")
         print("🔧 УЛУЧШЕННЫЙ KEEP-ALIVE: Активен")
         print("💬 РЕЖИМ: Только группы")
+        print(f"📢 ОСНОВНОЙ ЧАТ ОПОВЕЩЕНИЙ: {self.MAIN_ALERT_CHAT_ID}")
         print("👨‍💻 РАЗРАБОТЧИК: Данил | @ChikenXa")
-        print("✨ " + "="*50)
+        print("✨ " + "="*60)
         
         application.run_polling()
 
