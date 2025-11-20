@@ -351,7 +351,7 @@ class DanilBot:
             f"└ ID: <code>{self.MAIN_ALERT_CHAT_ID}</code>\n\n"
             
             "🔒 <b>Бот работает только в группах!</b>\n\n"
-            "👨‍💻 <b>Разработано Данилом</b> | @ChikenXa"
+            "👨‍💻 <b>Разработано Данилом</b> | @prodDanil"
         )
         
         await update.message.reply_text(welcome_text, parse_mode=ParseMode.HTML)
@@ -406,7 +406,7 @@ class DanilBot:
             "📢 <b>ОСНОВНОЙ ЧАТ ОПОВЕЩЕНИЙ:</b>\n"
             f"└ ID: <code>{self.MAIN_ALERT_CHAT_ID}</code>\n\n"
             
-            "💡 <b>Для помощи:</b> @ChikenXa"
+            "💡 <b>Для помощи:</b> @prodDanil"
         )
         
         await update.message.reply_text(help_text, parse_mode=ParseMode.HTML)
@@ -1370,7 +1370,7 @@ class DanilBot:
                     await self.send_daily_kapt_status(application)
                 
                 # Ночной режим в 23:00
-                if current_time == "00:00":
+                if current_time == "23:00":
                     print("🌙 Активируем ночной режим")
                     await self.send_good_night(application)
                 
@@ -1557,7 +1557,7 @@ class DanilBot:
                 "🌜 <b>Спокойной ночи! Всем хорошо выспаться!</b>\n"
                 "🖥️ <b>Сервера работают в фоновом режиме...</b>\n"
                 "🧹 <b>Утренняя очистка в 6:00 МСК</b>\n\n"
-                "👨‍💻 <b>Разработано Данилом</b> | @ChikenXa"
+                "👨‍💻 <b>Разработано Данилом</b> | @prodDanil"
             )
             
             # ⭐ ОТПРАВЛЯЕМ ВО ВСЕ ЧАТЫ
@@ -1684,7 +1684,7 @@ class DanilBot:
                             f"✅ <b>Активных каптов:</b> {len(self.events)}\n"
                             f"📝 <b>Сообщений в памяти:</b> {len(self.bot_messages)}\n\n"
                             "🎯 <b>СИСТЕМА ГОТОВА К РАБОТЕ</b> 🎯\n\n"
-                            "👨‍💻 <b>Разработано Данилом</b> | @ChikenXa"
+                            "👨‍💻 <b>Разработано Данилом</b> | @prodDanil"
                         ),
                         parse_mode=ParseMode.HTML
                     )
@@ -1783,7 +1783,7 @@ class DanilBot:
         print("🔧 УЛУЧШЕННЫЙ KEEP-ALIVE: Активен")
         print("💬 РЕЖИМ: Только группы")
         print(f"📢 ОСНОВНОЙ ЧАТ ОПОВЕЩЕНИЙ: {self.MAIN_ALERT_CHAT_ID}")
-        print("👨‍💻 РАЗРАБОТЧИК: Данил | @ChikenXa")
+        print("👨‍💻 РАЗРАБОТЧИК: Данил | @prodDanil")
         print("✨ " + "="*60)
         
         application.run_polling()
