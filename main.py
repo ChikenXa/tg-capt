@@ -1370,7 +1370,7 @@ class DanilBot:
                     await self.send_daily_kapt_status(application)
                 
                 # Ночной режим в 23:00
-                if current_time == "23:15":
+                if current_time == "00:00":
                     print("🌙 Активируем ночной режим")
                     await self.send_good_night(application)
                 
