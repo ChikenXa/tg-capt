@@ -1263,43 +1263,52 @@ class DanilBot:
     # ==================== АВТОМАТИЧЕСКИЕ ОПОВЕЩЕНИЯ ====================
     
     async def scheduled_tasks(self, application):
-        """Планировщик задач"""
+        """Планировщик задач - проверяет ВСЕ каждую минуту"""
         while True:
             try:
                 await asyncio.sleep(60)  # Проверяем каждую минуту
                 
                 now = self.get_moscow_time()
-                print(f"⏰ Планировщик работает: {now.strftime('%d.%m %H:%M:%S')}")  # ДЕБАГ
+                current_time = now.strftime('%H:%M')
+                print(f"⏰ Планировщик проверяет: {now.strftime('%d.%m %H:%M:%S')}")  # ДЕБАГ
                 
-                # Утреннее оповещение в 10:00
-                if now.hour == 10 and now.minute == 0:
+                # ==================== ПРОВЕРКА ОПОВЕЩЕНИЙ КАЖДУЮ МИНУТУ ====================
+                
+                # Утренняя сводка в 10:00
+                if current_time == "10:00":
+                    print("🌅 Отправляем утреннюю сводку")
                     await self.send_morning_alert(application)
                 
                 # Напоминание об особе в 17:30
-                if now.hour == 17 and now.minute == 30:
+                if current_time == "17:30":
+                    print("📢 Отправляем напоминание об особе")
                     await self.send_hack_reminder(application)
                 
                 # Ежедневные капты в 14:00
-                if now.hour == 14 and now.minute == 0:
+                if current_time == "14:00":
+                    print("📍 Отправляем ежедневные капты")
                     await self.send_daily_kapt_status(application)
                 
-                # Напоминания о каптах (каждую минуту проверяем)
-                await self.send_kapt_reminders(application)
-                
                 # Ночной режим в 23:00
-                if now.hour == 23 and now.minute == 0:
+                if current_time == "23:00":
+                    print("🌙 Активируем ночной режим")
                     await self.send_good_night(application)
                 
                 # Очистка системы в 06:00
-                if now.hour == 6 and now.minute == 0:
+                if current_time == "06:00":
+                    print("🧹 Запускаем очистку системы")
                     await self.cleanup_system(application)
                 
                 # Оповещения о особах в 18:00
-                for location, schedule in HACK_SCHEDULE.items():
-                    if (now.weekday() == schedule["day"] and 
-                        now.hour == schedule["hour"] and 
-                        now.minute == schedule["minute"]):
-                        await self.send_hack_alert(application, location)
+                if current_time == "18:00":
+                    print("🚨 Проверяем особы в 18:00")
+                    for location, schedule in HACK_SCHEDULE.items():
+                        if schedule["day"] == now.weekday():
+                            print(f"🚨 Отправляем оповещение для {location}")
+                            await self.send_hack_alert(application, location)
+                
+                # ==================== ПРОВЕРКА НАПОМИНАНИЙ О КАПТАХ КАЖДУЮ МИНУТУ ====================
+                await self.send_kapt_reminders(application)
                 
                 # Авто-сохранение данных каждые 10 минут
                 if now.minute % 10 == 0:
@@ -1307,9 +1316,11 @@ class DanilBot:
                     self.save_data("admin_users", self.admin_users)
                     self.save_data("root_users", self.root_users)
                     self.save_data("events", self.events)
+                    print("💾 Авто-сохранение данных выполнено")
                     
             except Exception as e:
                 logger.error(f"Ошибка в планировщике: {e}")
+                print(f"❌ Ошибка в планировщике: {e}")
 
     async def send_morning_alert(self, application):
         """Утреннее оповещение в 10:00"""
@@ -1349,9 +1360,11 @@ class DanilBot:
                     self.alert_chats.discard(chat_id)
             
             logger.info("🌅 Утреннее оповещение отправлено")
+            print("✅ Утренняя сводка отправлена")
                 
         except Exception as e:
             logger.error(f"Ошибка отправки утреннего оповещения: {e}")
+            print(f"❌ Ошибка отправки утренней сводки: {e}")
 
     async def send_hack_reminder(self, application):
         """Напоминание об особе в 17:30"""
@@ -1383,9 +1396,11 @@ class DanilBot:
                             self.alert_chats.discard(chat_id)
                 
                 logger.info("📢 Напоминание об особе отправлено")
+                print("✅ Напоминание об особе отправлено")
                 
         except Exception as e:
             logger.error(f"Ошибка отправки напоминания: {e}")
+            print(f"❌ Ошибка отправки напоминания об особе: {e}")
 
     async def send_hack_alert(self, application, location: str):
         """Оповещение о особы в 18:00"""
@@ -1409,9 +1424,11 @@ class DanilBot:
                     self.alert_chats.discard(chat_id)
             
             logger.info(f"🚨 Оповещение о особы {location} отправлено")
+            print(f"✅ Оповещение о особы {location} отправлено")
                 
         except Exception as e:
             logger.error(f"Ошибка отправки оповещения о особы: {e}")
+            print(f"❌ Ошибка отправки оповещения о особы: {e}")
 
     async def send_daily_kapt_status(self, application):
         """Ежедневные капты в 14:00"""
@@ -1456,9 +1473,11 @@ class DanilBot:
                     self.alert_chats.discard(chat_id)
             
             logger.info("🕐 Ежедневные капты отправлены и закреплены")
+            print("✅ Ежедневные капты отправлены")
                 
         except Exception as e:
             logger.error(f"Ошибка отправки ежедневных каптов: {e}")
+            print(f"❌ Ошибка отправки ежедневных каптов: {e}")
 
     async def send_good_night(self, application):
         """Ночной режим в 23:00"""
@@ -1489,9 +1508,11 @@ class DanilBot:
                     self.alert_chats.discard(chat_id)
             
             logger.info("🌙 Ночной режим активирован")
+            print("✅ Ночной режим активирован")
                 
         except Exception as e:
             logger.error(f"Ошибка отправки ночного режима: {e}")
+            print(f"❌ Ошибка отправки ночного режима: {e}")
 
     async def cleanup_system(self, application):
         """Очистка системы в 06:00"""
@@ -1622,9 +1643,11 @@ class DanilBot:
                     logger.error(f"Ошибка очистки в чате {chat_id}: {e}")
             
             logger.info("🧹 Очистка системы завершена")
+            print("✅ Очистка системы завершена")
                 
         except Exception as e:
             logger.error(f"Ошибка очистки системы: {e}")
+            print(f"❌ Ошибка очистки системы: {e}")
 
     # ==================== НАСТРОЙКА ОБРАБОТЧИКОВ ====================
     
@@ -1696,6 +1719,7 @@ class DanilBot:
         print("🤖 МЕЖБОТОВОЕ ВЗАИМОДЕЙСТВИЕ: Активировано")
         print("🔔 АВТО-ОПОВЕЩЕНИЯ: 10:00, 17:30, 18:00, 14:00, 23:00, 06:00")
         print("⏰ НАПОМИНАНИЯ О КАПТАХ: За 30 минут до начала")
+        print("🔄 РЕЖИМ ПРОВЕРКИ: Каждую минуту")
         print("🔐 ПАРОЛЬ АДМИНА: 24680")
         print("👑 ПАРОЛЬ ROOT: 1508")
         print("🔧 УЛУЧШЕННЫЙ KEEP-ALIVE: Активен")
