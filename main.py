@@ -32,7 +32,7 @@ class EnhancedKeepAlive:
         def do_GET(self):
             if self.path in ['/health', '/']:
                 self.send_response(200)
-                self.send_header('Content-type', 'text/html')
+                self.send_header('Content-type', 'text/html; charset=utf-8')
                 self.end_headers()
                 self.wfile.write('🤖 ДанилBot работает 24/7! 🚀'.encode('utf-8'))
             else:
@@ -275,6 +275,7 @@ class DanilBot:
             "├ 📢 <b>17:30</b> - Напоминание об особе\n" 
             "├ 🚨 <b>18:00</b> - Оповещения о особах\n"
             "├ 📍 <b>14:00</b> - Ежедневные капты\n"
+            "├ ⏰ <b>За 30 мин</b> - Напоминания о каптах\n"
             "├ 🌙 <b>23:00</b> - Ночной режим\n"
             "└ 🧹 <b>06:00</b> - Очистка системы\n\n"
             
@@ -335,7 +336,13 @@ class DanilBot:
             "└ /remove_admin @username - Удалить админа\n\n"
             
             "🔔 <b>АВТО-ОПОВЕЩЕНИЯ:</b>\n"
-            "└ См. расписание в /start\n\n"
+            "├ 🌅 10:00 - Утренняя сводка\n"
+            "├ 📢 17:30 - Напоминание об особе\n"
+            "├ 🚨 18:00 - Оповещения о особах\n"
+            "├ 📍 14:00 - Ежедневные капты\n"
+            "├ ⏰ За 30 мин - Напоминания о каптах\n"
+            "├ 🌙 23:00 - Ночной режим\n"
+            "└ 🧹 06:00 - Очистка системы\n\n"
             
             "💡 <b>Для помощи:</b> @ChikenXa"
         )
@@ -1133,6 +1140,67 @@ class DanilBot:
         except Exception as e:
             logger.warning(f"Не удалось закрепить сообщение: {e}")
 
+    # ==================== СИСТЕМА НАПОМИНАНИЙ О КАПТАХ ====================
+    
+    async def send_kapt_reminders(self, application):
+        """Напоминания о каптах за 30 минут"""
+        try:
+            now = self.get_moscow_time()
+            current_date = now.strftime('%d.%m')
+            
+            # Проверяем все капты
+            for event_code, event in self.events.items():
+                event_date = event['date']
+                event_time = event['time']
+                
+                # Проверяем, что капт сегодня
+                if event_date != current_date:
+                    continue
+                
+                # Парсим время капта
+                try:
+                    event_hour, event_minute = map(int, event_time.split(':'))
+                    
+                    # Вычисляем время напоминания (за 30 минут)
+                    reminder_time = now.replace(hour=event_hour, minute=event_minute) - timedelta(minutes=30)
+                    
+                    # Если текущее время совпадает с временем напоминания
+                    if (now.hour == reminder_time.hour and 
+                        now.minute == reminder_time.minute):
+                        
+                        reminder_text = (
+                            "⏰ <b>НАПОМИНАНИЕ О КАПТЕ!</b>\n\n"
+                            f"🎯 <b>{event['name']}</b>\n"
+                            f"🔢 <b>Код:</b> <code>{event_code}</code>\n"
+                            f"📅 <b>Через 30 минут в:</b> {event_time} МСК\n"
+                            f"🎫 <b>Слоты:</b> {event['slots']}\n"
+                            f"⚔️ <b>Оружие:</b> {event['weapon_type']}\n"
+                            f"❤️ <b>Хил:</b> {event['heal']}\n"
+                            f"🛡️ <b>Роль:</b> {event['role']}\n"
+                            f"👤 <b>Создатель:</b> {event['author']}\n\n"
+                            f"🚀 <b>Готовьтесь к капту!</b>"
+                        )
+                        
+                        # Отправляем во все активные чаты
+                        for chat_id in self.alert_chats:
+                            try:
+                                await application.bot.send_message(
+                                    chat_id=chat_id, 
+                                    text=reminder_text, 
+                                    parse_mode=ParseMode.HTML
+                                )
+                                logger.info(f"⏰ Напоминание о капте {event_code} отправлено в чат {chat_id}")
+                            except Exception as e:
+                                logger.error(f"Ошибка отправки напоминания в чат {chat_id}: {e}")
+                                self.alert_chats.discard(chat_id)
+                                
+                except Exception as e:
+                    logger.error(f"Ошибка обработки времени капта {event_code}: {e}")
+                    continue
+                    
+        except Exception as e:
+            logger.error(f"Ошибка в send_kapt_reminders: {e}")
+
     # ==================== АВТОМАТИЧЕСКИЕ ОПОВЕЩЕНИЯ ====================
     
     async def scheduled_tasks(self, application):
@@ -1154,6 +1222,9 @@ class DanilBot:
                 # Ежедневные капты в 14:00
                 if now.hour == 14 and now.minute == 0:
                     await self.send_daily_kapt_status(application)
+                
+                # Напоминания о каптах (каждую минуту проверяем)
+                await self.send_kapt_reminders(application)
                 
                 # Ночной режим в 23:00
                 if now.hour == 23 and now.minute == 0:
@@ -1525,7 +1596,7 @@ class DanilBot:
         application.add_handler(CommandHandler("add_admin", self.add_admin))
         application.add_handler(CommandHandler("remove_admin", self.remove_admin))
         
-        # Обработчик сообщений от других ботов (ДОБАВЛЕНО!)
+        # Обработчик сообщений от других ботов
         application.add_handler(MessageHandler(
             filters.TEXT & filters.ChatType.GROUPS, 
             self.handle_bot_message
@@ -1556,12 +1627,14 @@ class DanilBot:
         print("🤖 ДАНИЛБOT ЗАПУЩЕН!")
         print("✨ " + "="*50)
         print("🎯 СИСТЕМА КАПТОВ: Активирована")
+        print("⏰ НАПОМИНАНИЯ О КАПТАХ: Активированы (за 30 минут)")
         print("🏰 СИСТЕМА ОСОБНЯКОВ: Активирована")
         print("🤝 СИСТЕМА СОЮЗОВ: Активирована")
         print("🛠️ АДМИН-СИСТЕМА: Готова")
         print("👑 ROOT-СИСТЕМА: Активирована")
         print("🤖 МЕЖБОТОВОЕ ВЗАИМОДЕЙСТВИЕ: Активировано")
         print("🔔 АВТО-ОПОВЕЩЕНИЯ: 10:00, 17:30, 18:00, 14:00, 23:00, 06:00")
+        print("⏰ НАПОМИНАНИЯ О КАПТАХ: За 30 минут до начала")
         print("🔐 ПАРОЛЬ АДМИНА: 24680")
         print("👑 ПАРОЛЬ ROOT: 1508")
         print("🔧 УЛУЧШЕННЫЙ KEEP-ALIVE: Активен")
