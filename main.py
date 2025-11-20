@@ -11,37 +11,89 @@ from telegram.constants import ParseMode
 from flask import Flask
 from threading import Thread
 import time
+import threading
+import urllib.request
+import http.server
+import socketserver
 
-# ==================== KEEP ALIVE SYSTEM ====================
-keep_alive_app = Flask(__name__)
+# ==================== УЛУЧШЕННАЯ СИСТЕМА ЖИВУЧЕСТИ 24/7 ====================
+class EnhancedKeepAlive:
+    def __init__(self):
+        self.port = 8080
+        self.ping_interval = 50
+        self.web_server = None
+        self.is_running = True
+        self.ping_urls = [
+            f"https://{os.environ.get('REPL_SLUG', 'danil-bot')}.{os.environ.get('REPL_OWNER', 'user')}.repl.co",
+            f"https://{os.environ.get('REPL_SLUG', 'danil-bot')}.{os.environ.get('REPL_OWNER', 'user')}.repl.co/health"
+        ]
+        
+    class HealthHandler(http.server.SimpleHTTPRequestHandler):
+        def do_GET(self):
+            if self.path in ['/health', '/']:
+                self.send_response(200)
+                self.send_header('Content-type', 'text/html')
+                self.end_headers()
+                self.wfile.write(b'🤖 ДанилBot работает 24/7! 🚀')
+            else:
+                self.send_response(404)
+                self.end_headers()
+                
+        def log_message(self, format, *args):
+            pass
 
-@keep_alive_app.route('/')
-def home():
-    return "🤖 ДанилBot работает 24/7! 🚀"
-
-@keep_alive_app.route('/health')
-def health_check():
-    return "✅ OK", 200
-
-def run_keep_alive():
-    keep_alive_app.run(host='0.0.0.0', port=8080)
-
-def auto_ping():
-    while True:
+    def run_web_server(self):
+        """Запуск веб-сервера"""
         try:
-            repl_slug = os.environ.get('REPL_SLUG', 'danil-bot')
-            repl_owner = os.environ.get('REPL_OWNER', 'user')
-            url = f"https://{repl_slug}.{repl_owner}.repl.co"
-            requests.get(url, timeout=10)
-            print(f"🟢 Пинг: {datetime.now().strftime('%H:%M:%S')}")
-        except:
-            print(f"⚠️ Пинг не удался: {datetime.now().strftime('%H:%M:%S')}")
-        time.sleep(300)
+            with socketserver.TCPServer(("", self.port), self.HealthHandler) as httpd:
+                print(f"🌐 Веб-сервер запущен на порту {self.port}")
+                self.web_server = httpd
+                httpd.serve_forever()
+        except Exception as e:
+            print(f"❌ Ошибка веб-сервера: {e}")
 
-Thread(target=run_keep_alive, daemon=True).start()
-Thread(target=auto_ping, daemon=True).start()
-print("🔧 Keep-alive система запущена!")
-# ==================== END KEEP ALIVE SYSTEM ====================
+    def auto_ping(self):
+        """Улучшенный пинг системы"""
+        ping_count = 0
+        while self.is_running:
+            try:
+                for url in self.ping_urls:
+                    try:
+                        response = requests.get(url, timeout=10)
+                        if response.status_code == 200:
+                            print(f"🟢 Пинг #{ping_count}: {datetime.now().strftime('%H:%M:%S')} - OK")
+                            break
+                    except:
+                        continue
+                ping_count += 1
+                
+                # Каждые 10 пингов выводим статистику
+                if ping_count % 10 == 0:
+                    print(f"📊 Статистика: {ping_count} успешных пингов")
+                    
+            except Exception as e:
+                print(f"⚠️ Пинг не удался: {e}")
+            
+            time.sleep(self.ping_interval)
+
+    def start(self):
+        """Запуск всей системы живучести"""
+        # Запускаем веб-сервер в отдельном потоке
+        web_thread = threading.Thread(target=self.run_web_server, daemon=True)
+        web_thread.start()
+        
+        # Запускаем пинг в отдельном потоке
+        ping_thread = threading.Thread(target=self.auto_ping, daemon=True)
+        ping_thread.start()
+        
+        print("🔧 Улучшенная keep-alive система запущена!")
+        print("🌐 Веб-сервер: Активен")
+        print("📡 Авто-пинг: Активен")
+        print("🛡️  Режим 24/7: Включен")
+
+# Запускаем систему живучести ДО бота
+keep_alive_system = EnhancedKeepAlive()
+keep_alive_system.start()
 
 # Настройка логирования
 logging.basicConfig(
@@ -1512,7 +1564,7 @@ class DanilBot:
         print("🔔 АВТО-ОПОВЕЩЕНИЯ: 10:00, 17:30, 18:00, 14:00, 23:00, 06:00")
         print("🔐 ПАРОЛЬ АДМИНА: 24680")
         print("👑 ПАРОЛЬ ROOT: 1508")
-        print("🔧 KEEP-ALIVE: Активен")
+        print("🔧 УЛУЧШЕННЫЙ KEEP-ALIVE: Активен")
         print("💬 РЕЖИМ: Только группы")
         print("👨‍💻 РАЗРАБОТЧИК: Данил | @ChikenXa")
         print("✨ " + "="*50)
