@@ -17,7 +17,7 @@ keep_alive_app = Flask(__name__)
 
 @keep_alive_app.route('/')
 def home():
-    return "🎮 ДанилBot is running 24/7! 🚀"
+    return "🤖 ДанилBot работает 24/7! 🚀"
 
 @keep_alive_app.route('/health')
 def health_check():
@@ -33,14 +33,14 @@ def auto_ping():
             repl_owner = os.environ.get('REPL_OWNER', 'user')
             url = f"https://{repl_slug}.{repl_owner}.repl.co"
             requests.get(url, timeout=10)
-            print(f"🟢 Keep-alive ping: {datetime.now().strftime('%H:%M:%S')}")
+            print(f"🟢 Пинг: {datetime.now().strftime('%H:%M:%S')}")
         except:
-            print(f"⚠️ Keep-alive failed at {datetime.now().strftime('%H:%M:%S')}")
+            print(f"⚠️ Пинг не удался: {datetime.now().strftime('%H:%M:%S')}")
         time.sleep(300)
 
 Thread(target=run_keep_alive, daemon=True).start()
 Thread(target=auto_ping, daemon=True).start()
-print("🔧 Keep-alive system started!")
+print("🔧 Keep-alive система запущена!")
 # ==================== END KEEP ALIVE SYSTEM ====================
 
 # Настройка логирования
@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 if not BOT_TOKEN:
-    logging.error("❌ BOT_TOKEN not found!")
+    logging.error("❌ BOT_TOKEN не найден!")
     exit(1)
 
 # Конфигурация особняков
@@ -89,7 +89,7 @@ class DanilBot:
                     return json.load(f)
             return {}
         except Exception as e:
-            logger.error(f"Error loading {data_type}: {e}")
+            logger.error(f"Ошибка загрузки {data_type}: {e}")
             return {}
 
     def save_data(self, data_type: str, data):
@@ -100,13 +100,15 @@ class DanilBot:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             return True
         except Exception as e:
-            logger.error(f"Error saving {data_type}: {e}")
+            logger.error(f"Ошибка сохранения {data_type}: {e}")
             return False
 
     def is_admin(self, user_id: int) -> bool:
-        return str(user_id) in self.admin_users
+        """Проверка прав админа (root тоже админы)"""
+        return str(user_id) in self.admin_users or str(user_id) in self.root_users
 
     def is_root(self, user_id: int) -> bool:
+        """Проверка root прав"""
         return str(user_id) in self.root_users
 
     def generate_alliance_code(self):
@@ -120,20 +122,135 @@ class DanilBot:
         """Получить московское время"""
         return datetime.utcnow() + timedelta(hours=3)
 
-    # ==================== СИСТЕМА КАПТОВ (БЕЗ ЗАПИСИ) ====================
+    # ==================== КРАСИВЫЕ КОМАНДЫ ====================
+    
+    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Главное меню"""
+        user = update.effective_user
+        self.alert_chats.add(update.effective_chat.id)
+        
+        welcome_text = (
+            "✨ <b>🤖 ДАНИЛБОТ АКТИВИРОВАН</b> ✨\n\n"
+            
+            "🕐 <b>АВТОМАТИЧЕСКИЕ ФУНКЦИИ:</b>\n"
+            "├ 🌅 <b>10:00</b> - Утренняя сводка\n"
+            "├ 📢 <b>17:30</b> - Напоминание об особе\n" 
+            "├ 🚨 <b>18:00</b> - Оповещения о особах\n"
+            "├ 📍 <b>14:00</b> - Ежедневные капты\n"
+            "├ 🌙 <b>23:00</b> - Ночной режим\n"
+            "└ 🧹 <b>06:00</b> - Очистка системы\n\n"
+            
+            "🎯 <b>ОСНОВНЫЕ КОМАНДЫ:</b>\n"
+            "├ /help - Все команды\n"
+            "├ /hacks - Расписание особ\n"
+            "├ /next - Ближайшая особа\n"
+            "├ /alliances - Список союзов\n"
+            "├ /kapt - Активные капты\n"
+            "├ /create - Создать капт\n"
+            "├ /pong - Проверка работы\n"
+            "└ /admin - Админ-панель\n\n"
+            
+            "🔒 <b>Бот работает только в группах!</b>\n\n"
+            "👨‍💻 <b>Разработано Данилом</b> | @ChikenXa"
+        )
+        
+        await update.message.reply_text(welcome_text, parse_mode=ParseMode.HTML)
+
+    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Помощь по командам"""
+        help_text = (
+            "📚 <b>ПОМОЩЬ ПО КОМАНДАМ</b>\n\n"
+            
+            "🎮 <b>ОСНОВНЫЕ КОМАНДЫ:</b>\n"
+            "├ /start - Главное меню\n"
+            "├ /help - Эта справка\n" 
+            "├ /pong - Проверка работы\n"
+            "├ /hacks - Расписание особняков\n"
+            "├ /next - Ближайшая особа\n"
+            "├ /alliances - Список союзов\n"
+            "└ /kapt - Активные капты\n\n"
+            
+            "⚔️ <b>СИСТЕМА КАПТОВ:</b>\n"
+            "└ /create код название слоты дата время оружие хил роль\n"
+            "  📝 <i>Пример: /create 1 Рейд 5 20.11 21:30 Лук Да Защита</i>\n\n"
+            
+            "🛡️ <b>АДМИН СИСТЕМА:</b>\n"
+            "├ /admin - Админ-панель\n"
+            "├ /add_alliance Название - Добавить союз\n"
+            "├ /remove_alliance КОД - Удалить союз\n"
+            "├ /clear_alliances - Очистить союзы\n"
+            "├ /del код - Удалить капт\n"
+            "├ /admin_stats - Статистика\n"
+            "├ /admin_list - Список админов\n"
+            "├ /test_alert - Тест оповещение\n"
+            "└ /reload - Перезагрузить данные\n\n"
+            
+            "👑 <b>ROOT КОМАНДЫ:</b>\n"
+            "├ /add_admin @username - Добавить админа\n"
+            "└ /remove_admin @username - Удалить админа\n\n"
+            
+            "🔔 <b>АВТО-ОПОВЕЩЕНИЯ:</b>\n"
+            "└ См. расписание в /start\n\n"
+            
+            "💡 <b>Для помощи:</b> @ChikenXa"
+        )
+        
+        await update.message.reply_text(help_text, parse_mode=ParseMode.HTML)
+
+    async def pong(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Проверка работы бота"""
+        try:
+            if update.effective_chat.type == 'private':
+                await update.message.reply_text("❌ Эта команда работает только в группах!")
+                return
+            
+            start_time = time.time()
+            message = await update.message.reply_text("🏓 <b>Проверка связи...</b>", parse_mode=ParseMode.HTML)
+            end_time = time.time()
+            
+            ping_time = round((end_time - start_time) * 1000, 2)
+            uptime = time.time() - self.start_time
+            days = int(uptime // 86400)
+            hours = int((uptime % 86400) // 3600)
+            minutes = int((uptime % 3600) // 60)
+            
+            pong_text = (
+                f"✅ <b>СИСТЕМА РАБОТАЕТ</b>\n\n"
+                f"⚡ <b>Пинг:</b> {ping_time} мс\n"
+                f"⏱️ <b>Аптайм:</b> {days}д {hours}ч {minutes}м\n"
+                f"👥 <b>Чатов:</b> {len(self.alert_chats)}\n"
+                f"🤝 <b>Союзов:</b> {len(self.alliances)}\n"
+                f"🎯 <b>Каптов:</b> {len(self.events)}\n\n"
+                f"🕐 <b>Время МСК:</b> {self.get_moscow_time().strftime('%H:%M:%S')}"
+            )
+            
+            await message.edit_text(pong_text, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            logger.error(f"Ошибка в pong: {e}")
+
+    # ==================== СИСТЕМА КАПТОВ ====================
     
     async def create_event(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Создать капт (без записи)"""
+        """Создать капт"""
         try:
             if len(context.args) < 8:
-                message = await update.message.reply_text(
-                    "🎯 *Создание капта*\n\n"
-                    "📋 *Формат:*\n"
-                    "`/create код название слоты дата время оружие хил роль`\n\n"
-                    "📝 *Пример:*\n"
-                    "`/create 1 Рейд 5 20.11 21:30 Лук Да Защита`",
-                    parse_mode='Markdown'
+                help_text = (
+                    "🎯 <b>СОЗДАНИЕ КАПТА</b>\n\n"
+                    "📋 <b>Формат команды:</b>\n"
+                    "<code>/create код название слоты дата время оружие хил роль</code>\n\n"
+                    "📝 <b>Пример:</b>\n"
+                    "<code>/create 1 Рейд 5 20.11 21:30 Лук Да Защита</code>\n\n"
+                    "🔍 <b>Параметры:</b>\n"
+                    "├ <b>код</b> - уникальный номер капта\n"
+                    "├ <b>название</b> - название события\n" 
+                    "├ <b>слоты</b> - количество участников\n"
+                    "├ <b>дата</b> - в формате ДД.ММ\n"
+                    "├ <b>время</b> - в формате ЧЧ:ММ\n"
+                    "├ <b>оружие</b> - тип оружия\n"
+                    "├ <b>хил</b> - наличие лечения\n"
+                    "└ <b>роль</b> - основная роль\n"
                 )
+                message = await update.message.reply_text(help_text, parse_mode=ParseMode.HTML)
                 self.bot_messages.append((message.chat_id, message.message_id, time.time()))
                 return
             
@@ -149,7 +266,10 @@ class DanilBot:
             user = update.effective_user
             
             if event_code in self.events:
-                message = await update.message.reply_text(f"⚠️ *Капт {event_code} уже существует!*", parse_mode='Markdown')
+                message = await update.message.reply_text(
+                    f"⚠️ <b>Капт {event_code} уже существует!</b>", 
+                    parse_mode=ParseMode.HTML
+                )
                 self.bot_messages.append((message.chat_id, message.message_id, time.time()))
                 return
             
@@ -167,21 +287,21 @@ class DanilBot:
             }
             
             event_text = (
-                f"🎯 *НОВЫЙ КАПТ СОЗДАН!*\n\n"
-                f"🔢 **Код:** `{event_code}`\n"
-                f"📝 **Название:** {name}\n"
-                f"🎫 **Слоты:** {slots}\n"
-                f"📅 **Дата:** {date}\n"
-                f"⏰ **Время:** {time_str} МСК\n"
-                f"⚔️ **Оружие:** {weapon_type}\n"
-                f"❤️ **Хил:** {heal}\n"
-                f"🛡️ **Роль:** {role}\n"
-                f"👤 **Создатель:** {user.first_name}\n\n"
-                f"💡 *Система записи отключена*\n"
-                f"📞 *Связывайтесь с создателем напрямую*"
+                f"🎯 <b>НОВЫЙ КАПТ СОЗДАН!</b>\n\n"
+                f"🔢 <b>Код:</b> <code>{event_code}</code>\n"
+                f"📝 <b>Название:</b> {name}\n"
+                f"🎫 <b>Слоты:</b> {slots}\n"
+                f"📅 <b>Дата:</b> {date}\n"
+                f"⏰ <b>Время:</b> {time_str} МСК\n"
+                f"⚔️ <b>Оружие:</b> {weapon_type}\n"
+                f"❤️ <b>Хил:</b> {heal}\n"
+                f"🛡️ <b>Роль:</b> {role}\n"
+                f"👤 <b>Создатель:</b> {user.first_name}\n\n"
+                f"💡 <i>Система записи отключена</i>\n"
+                f"📞 <i>Связывайтесь с создателем напрямую</i>"
             )
             
-            message = await update.message.reply_text(event_text, parse_mode='Markdown')
+            message = await update.message.reply_text(event_text, parse_mode=ParseMode.HTML)
             
             # Сохраняем ID сообщения
             self.event_messages[event_code] = (message.chat_id, message.message_id)
@@ -194,208 +314,45 @@ class DanilBot:
             
         except Exception as e:
             logger.error(f"Ошибка создания капта: {e}")
-            message = await update.message.reply_text("❌ *Ошибка создания капта!*", parse_mode='Markdown')
+            message = await update.message.reply_text("❌ <b>Ошибка создания капта!</b>", parse_mode=ParseMode.HTML)
             self.bot_messages.append((message.chat_id, message.message_id, time.time()))
 
     async def kapt_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Показать все капты"""
         try:
             if not self.events:
-                message = await update.message.reply_text("📭 *Активных каптов нет*", parse_mode='Markdown')
+                message = await update.message.reply_text(
+                    "📭 <b>Активных каптов нет</b>\n\n"
+                    "💡 <i>Создайте первый капт командой /create</i>", 
+                    parse_mode=ParseMode.HTML
+                )
                 self.bot_messages.append((message.chat_id, message.message_id, time.time()))
                 return
             
-            text = "🎯 *АКТИВНЫЕ КАПТЫ*\n\n"
+            text = "🎯 <b>АКТИВНЫЕ КАПТЫ</b>\n\n"
             
             for code, event in self.events.items():
                 text += (
-                    f"🔢 **Код:** `{code}`\n"
-                    f"🎯 **{event['name']}**\n"
-                    f"📅 **Когда:** {event['date']} {event['time']} МСК\n"
-                    f"🎫 **Слоты:** {event['slots']}\n"
-                    f"⚔️ **Оружие:** {event['weapon_type']}\n"
-                    f"❤️ **Хил:** {event['heal']}\n"
-                    f"🛡️ **Роль:** {event['role']}\n"
-                    f"👤 **Создатель:** {event['author']}\n"
-                    f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"🔢 <b>Код:</b> <code>{code}</code>\n"
+                    f"🎯 <b>{event['name']}</b>\n"
+                    f"📅 <b>Когда:</b> {event['date']} {event['time']} МСК\n"
+                    f"🎫 <b>Слоты:</b> {event['slots']}\n"
+                    f"⚔️ <b>Оружие:</b> {event['weapon_type']}\n"
+                    f"❤️ <b>Хил:</b> {event['heal']}\n"
+                    f"🛡️ <b>Роль:</b> {event['role']}\n"
+                    f"👤 <b>Создатель:</b> {event['author']}\n"
+                    f"────────────────────\n\n"
                 )
             
-            message = await update.message.reply_text(text, parse_mode='Markdown')
+            message = await update.message.reply_text(text, parse_mode=ParseMode.HTML)
             self.bot_messages.append((message.chat_id, message.message_id, time.time()))
             
         except Exception as e:
-            message = await update.message.reply_text("❌ *Ошибка!*", parse_mode='Markdown')
+            message = await update.message.reply_text("❌ <b>Ошибка!</b>", parse_mode=ParseMode.HTML)
             self.bot_messages.append((message.chat_id, message.message_id, time.time()))
 
-    async def delete_event_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Удалить капт"""
-        try:
-            user = update.effective_user
-            
-            if not self.is_admin(user.id):
-                message = await update.message.reply_text("❌ *Нет прав админа!*", parse_mode='Markdown')
-                self.bot_messages.append((message.chat_id, message.message_id, time.time()))
-                return
-                
-            if not context.args:
-                message = await update.message.reply_text("❌ *Укажи код капта!*", parse_mode='Markdown')
-                self.bot_messages.append((message.chat_id, message.message_id, time.time()))
-                return
-            
-            event_code = context.args[0]
-            
-            if event_code not in self.events:
-                message = await update.message.reply_text("❌ *Капт не найден!*", parse_mode='Markdown')
-                self.bot_messages.append((message.chat_id, message.message_id, time.time()))
-                return
-            
-            # Удаляем сообщение капта если оно есть
-            if event_code in self.event_messages:
-                try:
-                    chat_id, message_id = self.event_messages[event_code]
-                    await context.bot.delete_message(chat_id, message_id)
-                except:
-                    pass
-                del self.event_messages[event_code]
-            
-            # Удаляем капт
-            del self.events[event_code]
-            self.save_data("events", self.events)
-            
-            message = await update.message.reply_text(
-                f"🗑️ *Капт {event_code} удален!*",
-                parse_mode='Markdown'
-            )
-            self.bot_messages.append((message.chat_id, message.message_id, time.time()))
-            
-        except Exception as e:
-            message = await update.message.reply_text("❌ *Ошибка удаления!*", parse_mode='Markdown')
-            self.bot_messages.append((message.chat_id, message.message_id, time.time()))
-
-    async def pin_event_message(self, application, chat_id, message_id):
-        """Закрепить сообщение с каптом"""
-        try:
-            await application.bot.pin_chat_message(
-                chat_id=chat_id,
-                message_id=message_id,
-                disable_notification=True
-            )
-            logger.info(f"Сообщение {message_id} закреплено в чате {chat_id}")
-        except Exception as e:
-            logger.warning(f"Не удалось закрепить сообщение: {e}")
-
-    # ==================== КОМАНДА С КОМАНДАМИ ====================
+    # ==================== СИСТЕМА ОСОБНЯКОВ ====================
     
-    async def commands(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Показать все команды"""
-        try:
-            if update.effective_chat.type == 'private':
-                await update.message.reply_text("❌ Этот бот работает только в группах!")
-                return
-            
-            commands_text = (
-                "🤖 <b>ДанилBot - Список команд</b>\n\n"
-                
-                "📅 <b>Основные команды:</b>\n"
-                "• /start - Информация о боте\n"
-                "• /commands - Этот список команд\n"
-                "• /pong - Проверка работы бота\n"
-                "• /hacks - Расписание особняков\n"
-                "• /next - Ближайшая особа\n"
-                "• /alliances - Список союзов\n"
-                "• /kapt - Список каптов\n\n"
-                
-                "🎯 <b>Капты:</b>\n"
-                "• /create код название слоты дата время оружие хил роль\n"
-                "  Пример: /create 1 Рейд 5 20.11 21:30 Лук Да Защита\n\n"
-                
-                "🛠️ <b>Админ команды:</b>\n"
-                "• /root - Админ-панель\n"
-                "• /del код - Удалить капт\n"
-                "• /add_alliance Название - Добавить союз\n"
-                "• /remove_alliance КОД - Удалить союз\n"
-                "• /clear_alliances - Очистить союзы\n"
-                "• /admin_stats - Статистика\n"
-                "• /admin_list - Список админов\n"
-                "• /test_alert - Тест оповещение\n"
-                "• /reload - Перезагрузить данные\n\n"
-                
-                "🔔 <b>Автоматические оповещения:</b>\n"
-                "• 🌅 10:00 - Утренняя сводка\n"
-                "• 📢 17:30 - Напоминание об особе\n"
-                "• 🚨 18:00 - Оповещения о особах\n"
-                "• 📍 14:00 - Ежедневные капты\n"
-                "• 🌙 23:00 - Ночной режим\n"
-                "• 🧹 06:00 - Очистка системы\n\n"
-                
-                "👨‍💻 <b>Разработано Данилом (ChikenXa)</b>"
-            )
-            
-            await update.message.reply_text(commands_text, parse_mode=ParseMode.HTML)
-            
-        except Exception as e:
-            logger.error(f"Error in commands: {e}")
-
-    # ==================== ОСНОВНЫЕ КОМАНДЫ ====================
-    
-    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Главная команда"""
-        user = update.effective_user
-        self.alert_chats.add(update.effective_chat.id)
-        
-        welcome_text = (
-            "🤖 <b>ДанилBot активирован!</b>\n\n"
-            "⚡ <b>Автоматические оповещения:</b>\n"
-            "• 🌅 10:00 - Утренняя сводка\n"
-            "• 📢 17:30 - Напоминание об особе\n"
-            "• 🚨 18:00 - Оповещения о особах\n"
-            "• 📍 14:00 - Ежедневные капты\n"
-            "• 🌙 23:00 - Ночной режим\n"
-            "• 🧹 06:00 - Очистка системы\n\n"
-            "📋 <b>Основные команды:</b>\n"
-            "• /commands - Все команды\n"
-            "• /hacks - Расписание особы\n"
-            "• /next - Ближайшая особа\n"
-            "• /alliances - Список союзов\n"
-            "• /kapt - Список каптов\n"
-            "• /create - Создать капт\n"
-            "• /pong - Проверка работы\n"
-            "• /root - Админ-панель\n\n"
-            "🔔 <b>Бот работает только в группах!</b>\n\n"
-            "👨‍💻 <b>Разработано Данилом (ChikenXa)</b>"
-        )
-        
-        await update.message.reply_text(welcome_text, parse_mode=ParseMode.HTML)
-
-    async def pong(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Проверка работы бота"""
-        try:
-            if update.effective_chat.type == 'private':
-                await update.message.reply_text("❌ Эта команда работает только в группах!")
-                return
-            
-            ping_time = 0
-            if update.message and update.message.date:
-                ping_time = round((time.time() - update.message.date.timestamp()) * 1000, 2)
-                
-            uptime = time.time() - self.start_time
-            days = int(uptime // 86400)
-            hours = int((uptime % 86400) // 3600)
-            minutes = int((uptime % 3600) // 60)
-            
-            pong_text = (
-                f"🏓 <b>PONG!</b>\n\n"
-                f"⚡ Пинг: {ping_time} мс\n"
-                f"⏱ Аптайм: {days}д {hours}ч {minutes}м\n"
-                f"👥 Чатов: {len(self.alert_chats)}\n"
-                f"🤝 Союзов: {len(self.alliances)}\n"
-                f"🎯 Каптов: {len(self.events)}"
-            )
-            
-            await update.message.reply_text(pong_text, parse_mode=ParseMode.HTML)
-        except Exception as e:
-            logger.error(f"Error in pong: {e}")
-
     async def show_hacks(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Показать расписание особняков"""
         try:
@@ -409,11 +366,11 @@ class DanilBot:
             
             for location, schedule in HACK_SCHEDULE.items():
                 day_name = days[schedule["day"]]
-                schedule_text += f"🎯 {location}\n   📅 {day_name} - {schedule['hour']:02d}:{schedule['minute']:02d}\n\n"
+                schedule_text += f"🏰 <b>{location}</b>\n   📅 {day_name} - {schedule['hour']:02d}:{schedule['minute']:02d}\n\n"
             
             await update.message.reply_text(schedule_text, parse_mode=ParseMode.HTML)
         except Exception as e:
-            logger.error(f"Error in show_hacks: {e}")
+            logger.error(f"Ошибка в show_hacks: {e}")
 
     async def next_hack(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Ближайшая особа"""
@@ -427,16 +384,17 @@ class DanilBot:
             if closest:
                 next_text = (
                     f"🎯 <b>БЛИЖАЙШАЯ ОСОБА</b>\n\n"
-                    f"🏠 {closest['location']}\n"
-                    f"📅 {closest['when']}\n"
-                    f"⏱ Осталось: {closest['time_left']}"
+                    f"🏰 <b>{closest['location']}</b>\n"
+                    f"📅 <b>Когда:</b> {closest['when']}\n"
+                    f"⏱️ <b>Осталось:</b> {closest['time_left']}\n\n"
+                    f"💡 <i>Следующая особа через {closest['time_left']}</i>"
                 )
             else:
-                next_text = "❌ Не удалось определить ближайшую особу"
+                next_text = "❌ <b>Не удалось определить ближайшую особу</b>"
             
             await update.message.reply_text(next_text, parse_mode=ParseMode.HTML)
         except Exception as e:
-            logger.error(f"Error in next_hack: {e}")
+            logger.error(f"Ошибка в next_hack: {e}")
 
     def get_next_hack(self):
         """Получить ближайшую особу"""
@@ -473,6 +431,8 @@ class DanilBot:
         
         return closest
 
+    # ==================== СИСТЕМА СОЮЗОВ ====================
+    
     async def show_alliances(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Показать союзы"""
         try:
@@ -481,7 +441,11 @@ class DanilBot:
                 return
             
             if not self.alliances:
-                await update.message.reply_text("🤝 <b>Нет активных союзов</b>", parse_mode=ParseMode.HTML)
+                await update.message.reply_text(
+                    "🤝 <b>Активных союзов нет</b>\n\n"
+                    "💡 <i>Добавьте первый союз через админ-панель</i>", 
+                    parse_mode=ParseMode.HTML
+                )
                 return
             
             alliances_text = "🤝 <b>АКТИВНЫЕ СОЮЗЫ</b>\n\n"
@@ -491,17 +455,17 @@ class DanilBot:
                 name = alliance_data.get('name', 'Без названия')
                 created = alliance_data.get('created', 'N/A')
                 
-                alliances_text += f"✅ {name}\n"
-                alliances_text += f"   🔐 Код: {code}\n"
-                alliances_text += f"   📅 Создан: {created}\n\n"
+                alliances_text += f"✅ <b>{name}</b>\n"
+                alliances_text += f"   🔐 <b>Код:</b> <code>{code}</code>\n"
+                alliances_text += f"   📅 <b>Создан:</b> {created}\n\n"
             
             await update.message.reply_text(alliances_text, parse_mode=ParseMode.HTML)
         except Exception as e:
-            logger.error(f"Error in show_alliances: {e}")
+            logger.error(f"Ошибка в show_alliances: {e}")
 
-    # ==================== АДМИН СИСТЕМА ====================
+    # ==================== УЛУЧШЕННАЯ АДМИН СИСТЕМА ====================
     
-    async def root(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def admin_panel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Админ-панель"""
         try:
             if update.effective_chat.type == 'private':
@@ -520,7 +484,7 @@ class DanilBot:
                     parse_mode=ParseMode.HTML
                 )
         except Exception as e:
-            logger.error(f"Error in root: {e}")
+            logger.error(f"Ошибка в admin_panel: {e}")
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик сообщений с паролем"""
@@ -544,7 +508,7 @@ class DanilBot:
                     }
                     self.save_data("admin_users", self.admin_users)
                     
-                    await update.message.reply_text("✅ <b>Доступ предоставлен!</b>", parse_mode=ParseMode.HTML)
+                    await update.message.reply_text("✅ <b>Доступ к админ-панели предоставлен!</b>", parse_mode=ParseMode.HTML)
                     await self.show_admin_panel(update)
                 elif text == self.ROOT_PASSWORD:
                     self.waiting_for_password.discard(user_id)
@@ -564,7 +528,7 @@ class DanilBot:
                     await update.message.reply_text("❌ <b>Неверный пароль!</b>", parse_mode=ParseMode.HTML)
                     
         except Exception as e:
-            logger.error(f"Error in handle_message: {e}")
+            logger.error(f"Ошибка в handle_message: {e}")
 
     async def show_admin_panel(self, update: Update):
         """Показать админ-панель"""
@@ -575,24 +539,171 @@ class DanilBot:
             admin_text = "🛠️ <b>АДМИН-ПАНЕЛЬ</b>\n\n"
             
             if is_root_user:
-                admin_text += "👑 <b>Root-доступ</b>\n\n"
+                admin_text += "👑 <b>ROOT-доступ активирован</b>\n\n"
             
             admin_text += (
-                "⚙️ <b>Команды:</b>\n"
-                "• /add_alliance Название - Добавить союз\n"
-                "• /remove_alliance КОД - Удалить союз\n"
-                "• /clear_alliances - Очистить все союзы\n"
-                "• /del код - Удалить капт\n"
-                "• /admin_stats - Статистика\n"
-                "• /admin_list - Список админов\n"
-                "• /test_alert - Тест оповещение\n"
-                "• /reload - Перезагрузить данные"
+                "⚙️ <b>КОМАНДЫ УПРАВЛЕНИЯ:</b>\n"
+                "├ /add_alliance Название - Добавить союз\n"
+                "├ /remove_alliance КОД - Удалить союз\n"
+                "├ /clear_alliances - Очистить все союзы\n"
+                "├ /del код - Удалить капт\n"
+                "├ /admin_stats - Статистика бота\n"
+                "├ /admin_list - Список админов\n"
+                "├ /test_alert - Тест оповещение\n"
+                "└ /reload - Перезагрузить данные\n"
             )
+            
+            if is_root_user:
+                admin_text += (
+                    "\n👑 <b>ROOT КОМАНДЫ:</b>\n"
+                    "├ /add_admin @username - Добавить админа\n"
+                    "└ /remove_admin @username - Удалить админа\n"
+                )
             
             await update.message.reply_text(admin_text, parse_mode=ParseMode.HTML)
         except Exception as e:
-            logger.error(f"Error in show_admin_panel: {e}")
+            logger.error(f"Ошибка в show_admin_panel: {e}")
 
+    # ==================== ROOT КОМАНДЫ ====================
+    
+    async def add_admin(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Добавить админа (только root)"""
+        try:
+            if update.effective_chat.type == 'private':
+                await update.message.reply_text("❌ Эта команда работает только в группах!")
+                return
+                
+            # ТОЛЬКО root может добавлять админов
+            if not self.is_root(update.effective_user.id):
+                await update.message.reply_text("❌ <b>Только root может добавлять админов!</b>", parse_mode=ParseMode.HTML)
+                return
+            
+            if not context.args:
+                await update.message.reply_text(
+                    "📝 <b>Использование:</b>\n"
+                    "<code>/add_admin @username</code>", 
+                    parse_mode=ParseMode.HTML
+                )
+                return
+            
+            target = context.args[0]
+            
+            if not target.startswith('@'):
+                await update.message.reply_text(
+                    "❌ <b>Укажите @username (начинается с @)</b>", 
+                    parse_mode=ParseMode.HTML
+                )
+                return
+            
+            username = target[1:]  # Убираем @
+            
+            # Ищем пользователя по username
+            target_user_id = None
+            target_user_info = None
+            
+            # Проверяем в каптах
+            for event in self.events.values():
+                for participant in event.get('participants', []):
+                    if participant.get('username') == username:
+                        target_user_id = participant['user_id']
+                        target_user_info = participant
+                        break
+                if target_user_id:
+                    break
+            
+            if not target_user_id:
+                await update.message.reply_text(
+                    f"❌ <b>Пользователь @{username} не найден!</b>\n\n"
+                    f"💡 <i>Попросите человека написать боту любое сообщение</i>", 
+                    parse_mode=ParseMode.HTML
+                )
+                return
+            
+            if target_user_id in self.root_users:
+                await update.message.reply_text("❌ <b>Нельзя добавить root пользователя как админа!</b>", parse_mode=ParseMode.HTML)
+                return
+            
+            if target_user_id in self.admin_users:
+                await update.message.reply_text(f"⚠️ <b>Пользователь @{username} уже является админом!</b>", parse_mode=ParseMode.HTML)
+                return
+            
+            self.admin_users[target_user_id] = {
+                'username': username,
+                'first_name': target_user_info.get('first_name', 'Unknown'),
+                'added_by': update.effective_user.first_name,
+                'added_date': datetime.now().strftime('%d.%m.%Y %H:%M')
+            }
+            self.save_data("admin_users", self.admin_users)
+            
+            await update.message.reply_text(
+                f"✅ <b>Пользователь @{username} добавлен в админы!</b>", 
+                parse_mode=ParseMode.HTML
+            )
+            
+        except Exception as e:
+            logger.error(f"Ошибка добавления админа: {e}")
+            await update.message.reply_text("❌ <b>Ошибка добавления админа!</b>", parse_mode=ParseMode.HTML)
+
+    async def remove_admin(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Удалить админа (только root)"""
+        try:
+            if update.effective_chat.type == 'private':
+                await update.message.reply_text("❌ Эта команда работает только в группах!")
+                return
+                
+            # ТОЛЬКО root может удалять админов
+            if not self.is_root(update.effective_user.id):
+                await update.message.reply_text("❌ <b>Только root может удалять админов!</b>", parse_mode=ParseMode.HTML)
+                return
+            
+            if not context.args:
+                await update.message.reply_text(
+                    "📝 <b>Использование:</b>\n"
+                    "<code>/remove_admin @username</code>", 
+                    parse_mode=ParseMode.HTML
+                )
+                return
+            
+            target = context.args[0]
+            
+            if not target.startswith('@'):
+                await update.message.reply_text(
+                    "❌ <b>Укажите @username (начинается с @)</b>", 
+                    parse_mode=ParseMode.HTML
+                )
+                return
+            
+            username = target[1:]
+            
+            # Ищем админа по username
+            target_user_id = None
+            for admin_id, admin_info in self.admin_users.items():
+                if admin_info.get('username') == username:
+                    target_user_id = admin_id
+                    break
+            
+            if not target_user_id:
+                await update.message.reply_text(f"❌ <b>Пользователь @{username} не является админом!</b>", parse_mode=ParseMode.HTML)
+                return
+            
+            if target_user_id in self.root_users:
+                await update.message.reply_text("❌ <b>Нельзя удалить root пользователя!</b>", parse_mode=ParseMode.HTML)
+                return
+            
+            del self.admin_users[target_user_id]
+            self.save_data("admin_users", self.admin_users)
+            
+            await update.message.reply_text(
+                f"🗑️ <b>Пользователь @{username} удален из админов!</b>", 
+                parse_mode=ParseMode.HTML
+            )
+            
+        except Exception as e:
+            logger.error(f"Ошибка удаления админа: {e}")
+            await update.message.reply_text("❌ <b>Ошибка удаления админа!</b>", parse_mode=ParseMode.HTML)
+
+    # ==================== АДМИН КОМАНДЫ ====================
+    
     async def add_alliance(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Добавить союз"""
         try:
@@ -601,11 +712,15 @@ class DanilBot:
                 return
                 
             if not self.is_admin(update.effective_user.id):
-                await update.message.reply_text("❌ Доступ запрещен!")
+                await update.message.reply_text("❌ <b>Доступ запрещен!</b>", parse_mode=ParseMode.HTML)
                 return
             
             if not context.args:
-                await update.message.reply_text("❌ Использование: /add_alliance Название")
+                await update.message.reply_text(
+                    "📝 <b>Использование:</b>\n"
+                    "<code>/add_alliance Название союза</code>", 
+                    parse_mode=ParseMode.HTML
+                )
                 return
             
             alliance_name = " ".join(context.args)
@@ -614,20 +729,22 @@ class DanilBot:
             self.alliances[f"alliance_{int(time.time())}"] = {
                 'name': alliance_name,
                 'code': alliance_code,
-                'created': datetime.now().strftime('%d.%m.%Y %H:%M')
+                'created': datetime.now().strftime('%d.%m.%Y %H:%M'),
+                'created_by': update.effective_user.first_name
             }
             
             self.save_data("alliances", self.alliances)
             
             success_text = (
                 f"✅ <b>СОЮЗ ДОБАВЛЕН!</b>\n\n"
-                f"🎯 {alliance_name}\n"
-                f"🔐 {alliance_code}"
+                f"🎯 <b>Название:</b> {alliance_name}\n"
+                f"🔐 <b>Код:</b> <code>{alliance_code}</code>\n\n"
+                f"💡 <i>Код можно использовать для идентификации</i>"
             )
             
             await update.message.reply_text(success_text, parse_mode=ParseMode.HTML)
         except Exception as e:
-            logger.error(f"Error in add_alliance: {e}")
+            logger.error(f"Ошибка в add_alliance: {e}")
 
     async def remove_alliance(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Удалить союз"""
@@ -637,25 +754,34 @@ class DanilBot:
                 return
                 
             if not self.is_admin(update.effective_user.id):
-                await update.message.reply_text("❌ Доступ запрещен!")
+                await update.message.reply_text("❌ <b>Доступ запрещен!</b>", parse_mode=ParseMode.HTML)
                 return
             
             if not context.args:
-                await update.message.reply_text("❌ Использование: /remove_alliance КОД")
+                await update.message.reply_text(
+                    "📝 <b>Использование:</b>\n"
+                    "<code>/remove_alliance КОД</code>", 
+                    parse_mode=ParseMode.HTML
+                )
                 return
             
             target_code = context.args[0].upper()
             
             for alliance_id, alliance_data in self.alliances.items():
                 if alliance_data.get('code') == target_code:
+                    alliance_name = alliance_data.get('name', 'Без названия')
                     del self.alliances[alliance_id]
                     self.save_data("alliances", self.alliances)
-                    await update.message.reply_text(f"✅ <b>СОЮЗ УДАЛЕН!</b>", parse_mode=ParseMode.HTML)
+                    await update.message.reply_text(
+                        f"✅ <b>СОЮЗ УДАЛЕН!</b>\n\n"
+                        f"🗑️ <b>{alliance_name}</b> (<code>{target_code}</code>)", 
+                        parse_mode=ParseMode.HTML
+                    )
                     return
             
-            await update.message.reply_text(f"❌ Союз с кодом '{target_code}' не найден")
+            await update.message.reply_text(f"❌ <b>Союз с кодом '{target_code}' не найден</b>", parse_mode=ParseMode.HTML)
         except Exception as e:
-            logger.error(f"Error in remove_alliance: {e}")
+            logger.error(f"Ошибка в remove_alliance: {e}")
 
     async def clear_alliances(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Очистить все союзы"""
@@ -665,16 +791,66 @@ class DanilBot:
                 return
                 
             if not self.is_admin(update.effective_user.id):
-                await update.message.reply_text("❌ Доступ запрещен!")
+                await update.message.reply_text("❌ <b>Доступ запрещен!</b>", parse_mode=ParseMode.HTML)
                 return
             
             count = len(self.alliances)
             self.alliances = {}
             self.save_data("alliances", self.alliances)
             
-            await update.message.reply_text(f"🗑️ <b>УДАЛЕНО {count} СОЮЗОВ!</b>", parse_mode=ParseMode.HTML)
+            await update.message.reply_text(
+                f"🗑️ <b>УДАЛЕНО {count} СОЮЗОВ!</b>", 
+                parse_mode=ParseMode.HTML
+            )
         except Exception as e:
-            logger.error(f"Error in clear_alliances: {e}")
+            logger.error(f"Ошибка в clear_alliances: {e}")
+
+    async def delete_event_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Удалить капт"""
+        try:
+            user = update.effective_user
+            
+            if not self.is_admin(user.id):
+                await update.message.reply_text("❌ <b>Нет прав админа!</b>", parse_mode=ParseMode.HTML)
+                return
+                
+            if not context.args:
+                await update.message.reply_text(
+                    "📝 <b>Использование:</b>\n"
+                    "<code>/del код_капта</code>", 
+                    parse_mode=ParseMode.HTML
+                )
+                return
+            
+            event_code = context.args[0]
+            
+            if event_code not in self.events:
+                await update.message.reply_text("❌ <b>Капт не найден!</b>", parse_mode=ParseMode.HTML)
+                return
+            
+            event_name = self.events[event_code]['name']
+            
+            # Удаляем сообщение капта если оно есть
+            if event_code in self.event_messages:
+                try:
+                    chat_id, message_id = self.event_messages[event_code]
+                    await context.bot.delete_message(chat_id, message_id)
+                except:
+                    pass
+                del self.event_messages[event_code]
+            
+            # Удаляем капт
+            del self.events[event_code]
+            self.save_data("events", self.events)
+            
+            await update.message.reply_text(
+                f"🗑️ <b>КАПТ УДАЛЕН!</b>\n\n"
+                f"🎯 <b>{event_name}</b> (<code>{event_code}</code>)", 
+                parse_mode=ParseMode.HTML
+            )
+            
+        except Exception as e:
+            await update.message.reply_text("❌ <b>Ошибка удаления!</b>", parse_mode=ParseMode.HTML)
 
     async def admin_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Статистика бота"""
@@ -684,25 +860,28 @@ class DanilBot:
                 return
                 
             if not self.is_admin(update.effective_user.id):
-                await update.message.reply_text("❌ Доступ запрещен!")
+                await update.message.reply_text("❌ <b>Доступ запрещен!</b>", parse_mode=ParseMode.HTML)
                 return
             
             uptime = time.time() - self.start_time
             days = int(uptime // 86400)
             hours = int((uptime % 86400) // 3600)
+            minutes = int((uptime % 3600) // 60)
             
             stats_text = (
                 "📊 <b>СТАТИСТИКА БОТА</b>\n\n"
-                f"⏱ Аптайм: {days}д {hours}ч\n"
-                f"🤝 Союзов: {len(self.alliances)}\n"
-                f"🎯 Каптов: {len(self.events)}\n"
-                f"👥 Админов: {len(self.admin_users)}\n"
-                f"💬 Чатов: {len(self.alert_chats)}"
+                f"⏱️ <b>Аптайм:</b> {days}д {hours}ч {minutes}м\n"
+                f"🤝 <b>Союзов:</b> {len(self.alliances)}\n"
+                f"🎯 <b>Каптов:</b> {len(self.events)}\n"
+                f"👥 <b>Админов:</b> {len(self.admin_users)}\n"
+                f"👑 <b>Root:</b> {len(self.root_users)}\n"
+                f"💬 <b>Чатов:</b> {len(self.alert_chats)}\n\n"
+                f"🕐 <b>Время МСК:</b> {self.get_moscow_time().strftime('%H:%M:%S')}"
             )
             
             await update.message.reply_text(stats_text, parse_mode=ParseMode.HTML)
         except Exception as e:
-            logger.error(f"Error in admin_stats: {e}")
+            logger.error(f"Ошибка в admin_stats: {e}")
 
     async def admin_list(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Список админов"""
@@ -712,7 +891,7 @@ class DanilBot:
                 return
                 
             if not self.is_admin(update.effective_user.id):
-                await update.message.reply_text("❌ Доступ запрещен!")
+                await update.message.reply_text("❌ <b>Доступ запрещен!</b>", parse_mode=ParseMode.HTML)
                 return
             
             if not self.admin_users:
@@ -724,15 +903,19 @@ class DanilBot:
             for user_id, user_data in self.admin_users.items():
                 username = user_data.get('username', 'Нет username')
                 first_name = user_data.get('first_name', 'Неизвестно')
-                is_root = "👑 " if str(user_id) in self.root_users else ""
+                added_date = user_data.get('added_date', 'N/A')
+                is_root = "👑 " if str(user_id) in self.root_users else "🛠️ "
                 
-                admin_list += f"{is_root}👤 <b>{first_name}</b>\n"
+                admin_list += f"{is_root}<b>{first_name}</b>\n"
                 admin_list += f"   📧 @{username}\n"
-                admin_list += f"   🆔 ID: {user_id}\n\n"
+                admin_list += f"   🆔 ID: {user_id}\n"
+                admin_list += f"   📅 {added_date}\n\n"
+            
+            admin_list += f"📈 <b>Всего:</b> {len(self.admin_users)} администраторов"
             
             await update.message.reply_text(admin_list, parse_mode=ParseMode.HTML)
         except Exception as e:
-            logger.error(f"Error in admin_list: {e}")
+            logger.error(f"Ошибка в admin_list: {e}")
 
     async def test_alert(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Тестовое оповещение"""
@@ -742,17 +925,19 @@ class DanilBot:
                 return
                 
             if not self.is_admin(update.effective_user.id):
-                await update.message.reply_text("❌ Доступ запрещен!")
+                await update.message.reply_text("❌ <b>Доступ запрещен!</b>", parse_mode=ParseMode.HTML)
                 return
             
             test_text = (
                 "🔔 <b>ТЕСТОВОЕ ОПОВЕЩЕНИЕ</b>\n\n"
-                "✅ Система работает корректно"
+                "✅ <b>Система работает корректно</b>\n"
+                "📡 <b>Все каналы связи активны</b>\n\n"
+                "💡 <i>Это тестовое сообщение</i>"
             )
             
             await update.message.reply_text(test_text, parse_mode=ParseMode.HTML)
         except Exception as e:
-            logger.error(f"Error in test_alert: {e}")
+            logger.error(f"Ошибка в test_alert: {e}")
 
     async def reload(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Перезагрузить данные"""
@@ -762,7 +947,7 @@ class DanilBot:
                 return
                 
             if not self.is_admin(update.effective_user.id):
-                await update.message.reply_text("❌ Доступ запрещен!")
+                await update.message.reply_text("❌ <b>Доступ запрещен!</b>", parse_mode=ParseMode.HTML)
                 return
             
             self.alliances = self.load_data("alliances")
@@ -771,11 +956,24 @@ class DanilBot:
             self.events = self.load_data("events")
             
             await update.message.reply_text(
-                "🔄 <b>ДАННЫЕ ПЕРЕЗАГРУЖЕНЫ!</b>",
+                "🔄 <b>ДАННЫЕ ПЕРЕЗАГРУЖЕНЫ!</b>\n\n"
+                "✅ <b>Все системы обновлены</b>", 
                 parse_mode=ParseMode.HTML
             )
         except Exception as e:
-            logger.error(f"Error in reload: {e}")
+            logger.error(f"Ошибка в reload: {e}")
+
+    async def pin_event_message(self, application, chat_id, message_id):
+        """Закрепить сообщение с каптом"""
+        try:
+            await application.bot.pin_chat_message(
+                chat_id=chat_id,
+                message_id=message_id,
+                disable_notification=True
+            )
+            logger.info(f"Сообщение {message_id} закреплено в чате {chat_id}")
+        except Exception as e:
+            logger.warning(f"Не удалось закрепить сообщение: {e}")
 
     # ==================== АВТОМАТИЧЕСКИЕ ОПОВЕЩЕНИЯ ====================
     
@@ -831,7 +1029,7 @@ class DanilBot:
             
             alert_text = (
                 "🌅 <b>ДОБРОЕ УТРО!</b>\n\n"
-                "📊 <b>Сводка на сегодня:</b>\n"
+                "📊 <b>СВОДКА НА СЕГОДНЯ:</b>\n"
             )
             
             # Проверяем сегодняшние особы
@@ -843,15 +1041,15 @@ class DanilBot:
             if today_hacks:
                 alert_text += "🔓 <b>Сегодня особы:</b>\n" + "\n".join(today_hacks)
             else:
-                alert_text += "✅ Сегодня особы нет\n"
+                alert_text += "✅ <b>Сегодня особы нет</b>\n"
             
-            alert_text += "\n🤝 <b>Активные союзы:</b>\n"
+            alert_text += "\n🤝 <b>АКТИВНЫЕ СОЮЗЫ:</b>\n"
             
             if self.alliances:
                 for alliance_data in self.alliances.values():
                     alert_text += f"🔹 {alliance_data['name']} ({alliance_data['code']})\n"
             else:
-                alert_text += "❌ Нет активных союзов\n"
+                alert_text += "❌ <b>Нет активных союзов</b>\n"
             
             # Отправляем во все активные чаты
             for chat_id in self.alert_chats:
@@ -883,7 +1081,8 @@ class DanilBot:
                         "📢 <b>НАПОМИНАНИЕ ОБ ОСОБЕ!</b>\n\n"
                         f"🎯 <b>ЧЕРЕЗ 30 МИНУТ:</b> {location}\n"
                         f"⏰ <b>Время:</b> 18:00 МСК\n\n"
-                        f" <b>Калл {location}!</b>\n"
+                        f"🔔 <b>Калл {location}!</b>\n"
+                        f"💂 <b>Готовьтесь к защите!</b>"
                     )
                     
                     # Отправляем во все активные чаты
@@ -908,7 +1107,8 @@ class DanilBot:
                 "🚨 <b>СРОЧНОЕ ОПОВЕЩЕНИЕ!</b>\n\n"
                 f"🔓 <b>ОСОБА:</b> {location}\n"
                 f"⏰ <b>Время:</b> {now.strftime('%H:%M %d.%m.%Y')}\n\n"
-                f"<b>Калл {location}!</b>\n"
+                f"🔔 <b>Калл {location}!</b>\n"
+                "💂 <b>Требуется помощь!</b>"
             )
             
             # Отправляем во все активные чаты
@@ -930,21 +1130,25 @@ class DanilBot:
             now = self.get_moscow_time()
             
             if not self.events:
-                text = "🕐 <b>ЕЖЕДНЕВНЫЙ СТАТУС КАПТОВ</b>\n\n📭 *Активных каптов нет*"
+                text = (
+                    "🕐 <b>ЕЖЕДНЕВНЫЙ СТАТУС КАПТОВ</b>\n\n"
+                    "📭 <b>Активных каптов нет</b>\n\n"
+                    "💡 <i>Создайте первый капт командой /create</i>"
+                )
             else:
                 text = "🕐 <b>ЕЖЕДНЕВНЫЙ СТАТУС КАПТОВ</b>\n\n"
                 
                 for code, event in self.events.items():
                     text += (
-                        f"🔢 **Код:** `{code}`\n"
-                        f"🎯 **{event['name']}**\n"
-                        f"📅 **Когда:** {event['date']} {event['time']} МСК\n"
-                        f"🎫 **Слоты:** {event['slots']}\n"
-                        f"⚔️ **Оружие:** {event['weapon_type']}\n"
-                        f"❤️ **Хил:** {event['heal']}\n"
-                        f"🛡️ **Роль:** {event['role']}\n"
-                        f"👤 **Создатель:** {event['author']}\n"
-                        f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                        f"🔢 <b>Код:</b> <code>{code}</code>\n"
+                        f"🎯 <b>{event['name']}</b>\n"
+                        f"📅 <b>Когда:</b> {event['date']} {event['time']} МСК\n"
+                        f"🎫 <b>Слоты:</b> {event['slots']}\n"
+                        f"⚔️ <b>Оружие:</b> {event['weapon_type']}\n"
+                        f"❤️ <b>Хил:</b> {event['heal']}\n"
+                        f"🛡️ <b>Роль:</b> {event['role']}\n"
+                        f"👤 <b>Создатель:</b> {event['author']}\n"
+                        f"────────────────────\n\n"
                     )
             
             # Отправляем во все активные чаты
@@ -972,7 +1176,6 @@ class DanilBot:
         try:
             now = self.get_moscow_time()
             
-            # Эффектное сообщение о переходе в ночной режим
             good_night_text = (
                 "🌙 <b>СИСТЕМА ПЕРЕХОДИТ В НОЧНОЙ РЕЖИМ</b> 🌙\n\n"
                 "🕰️ <b>Время:</b> 23:00 МСК\n"
@@ -980,7 +1183,7 @@ class DanilBot:
                 "🌜 <b>Спокойной ночи! Всем хорошо выспаться!</b>\n"
                 "🖥️ <b>Сервера работают в фоновом режиме...</b>\n"
                 "🧹 <b>Утренняя очистка в 6:00 МСК</b>\n\n"
-                "👨‍💻 <b>Разработано Данилом (ChikenXa)</b>"
+                "👨‍💻 <b>Разработано Данилом</b> | @ChikenXa"
             )
             
             # Отправляем во все активные чаты
@@ -1115,7 +1318,7 @@ class DanilBot:
                             f"✅ <b>Активных каптов:</b> {len(self.events)}\n"
                             f"📝 <b>Сообщений в памяти:</b> {len(self.bot_messages)}\n\n"
                             "🎯 <b>СИСТЕМА ГОТОВА К РАБОТЕ</b> 🎯\n\n"
-                            "👨‍💻 <b>Разработано Данилом (ChikenXa)</b>"
+                            "👨‍💻 <b>Разработано Данилом</b> | @ChikenXa"
                         ),
                         parse_mode=ParseMode.HTML
                     )
@@ -1140,14 +1343,14 @@ class DanilBot:
         """Настройка обработчиков"""
         # Основные команды
         application.add_handler(CommandHandler("start", self.start))
-        application.add_handler(CommandHandler("commands", self.commands))
+        application.add_handler(CommandHandler("help", self.help_command))
         application.add_handler(CommandHandler("pong", self.pong))
         application.add_handler(CommandHandler("hacks", self.show_hacks))
         application.add_handler(CommandHandler("alliances", self.show_alliances))
         application.add_handler(CommandHandler("next", self.next_hack))
         application.add_handler(CommandHandler("kapt", self.kapt_command))
         application.add_handler(CommandHandler("create", self.create_event))
-        application.add_handler(CommandHandler("root", self.root))
+        application.add_handler(CommandHandler("admin", self.admin_panel))
         
         # Админ-команды
         application.add_handler(CommandHandler("add_alliance", self.add_alliance))
@@ -1158,6 +1361,10 @@ class DanilBot:
         application.add_handler(CommandHandler("admin_list", self.admin_list))
         application.add_handler(CommandHandler("test_alert", self.test_alert))
         application.add_handler(CommandHandler("reload", self.reload))
+        
+        # Root команды
+        application.add_handler(CommandHandler("add_admin", self.add_admin))
+        application.add_handler(CommandHandler("remove_admin", self.remove_admin))
         
         # Обработчик сообщений с паролем
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
@@ -1180,17 +1387,21 @@ class DanilBot:
         # Запускаем планировщик задач
         application.job_queue.run_once(lambda ctx: asyncio.create_task(self.scheduled_tasks(application)), when=5)
         
-        print("🤖 ДанилBot запущен!")
-        print("📅 Расписание особняков активировано")
-        print("🔔 Авто-оповещения: 10:00, 17:30, 18:00, 14:00, 23:00, 06:00")
-        print("🎯 Система каптов готова (без записи)")
-        print("🤝 Система союзов готова")
-        print("🛠️ Админ-панель: /root")
-        print("🔐 Пароль админа: 24680")
-        print("👑 Пароль root: 1508")
-        print("🔧 Keep-alive system: ACTIVE")
-        print("💬 Бот работает ТОЛЬКО в группах!")
-        print("👨‍💻 Разработано Данилом (ChikenXa)")
+        print("✨ " + "="*50)
+        print("🤖 ДАНИЛБOT ЗАПУЩЕН!")
+        print("✨ " + "="*50)
+        print("🎯 СИСТЕМА КАПТОВ: Активирована")
+        print("🏰 СИСТЕМА ОСОБНЯКОВ: Активирована")
+        print("🤝 СИСТЕМА СОЮЗОВ: Активирована")
+        print("🛠️ АДМИН-СИСТЕМА: Готова")
+        print("👑 ROOT-СИСТЕМА: Активирована")
+        print("🔔 АВТО-ОПОВЕЩЕНИЯ: 10:00, 17:30, 18:00, 14:00, 23:00, 06:00")
+        print("🔐 ПАРОЛЬ АДМИНА: 24680")
+        print("👑 ПАРОЛЬ ROOT: 1508")
+        print("🔧 KEEP-ALIVE: Активен")
+        print("💬 РЕЖИМ: Только группы")
+        print("👨‍💻 РАЗРАБОТЧИК: Данил | @ChikenXa")
+        print("✨ " + "="*50)
         
         application.run_polling()
 
