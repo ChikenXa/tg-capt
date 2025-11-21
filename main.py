@@ -597,7 +597,7 @@ class DanilBot:
             logger.error(f"Ошибка в show_hacks: {e}")
 
     async def next_hack(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Ближайшая особа"""
+        """Ближайшая особа - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
         try:
             if update.effective_chat.type == 'private':
                 await update.message.reply_text("❌ Эта команда работает только в группах!")
@@ -621,13 +621,42 @@ class DanilBot:
             logger.error(f"Ошибка в next_hack: {e}")
 
     def get_next_hack(self):
-        """Получить ближайшую особу"""
+        """Получить ближайшую особу - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
         now = self.get_moscow_time()
         closest = None
         
+        print(f"🔍 Поиск ближайшей особы. Сегодня: {now.strftime('%A %d.%m %H:%M')}")
+        
         for location, schedule in HACK_SCHEDULE.items():
+            # Вычисляем разницу в днях
             days_ahead = schedule["day"] - now.weekday()
-            if days_ahead <= 0:
+            
+            # Если особа сегодня И время еще не прошло
+            if days_ahead == 0:
+                hack_time_today = now.replace(
+                    hour=schedule["hour"], 
+                    minute=schedule["minute"], 
+                    second=0, 
+                    microsecond=0
+                )
+                
+                # Если время особы сегодня еще не наступило
+                if now < hack_time_today:
+                    time_left = hack_time_today - now
+                    hours_left = time_left.total_seconds() // 3600
+                    minutes_left = (time_left.total_seconds() % 3600) // 60
+                    
+                    closest = {
+                        'location': location,
+                        'time': hack_time_today,
+                        'when': f"Сегодня {hack_time_today.strftime('%H:%M')}",
+                        'time_left': f"{int(hours_left)}ч {int(minutes_left)}м"
+                    }
+                    print(f"✅ Найдена особа сегодня: {location} в {hack_time_today.strftime('%H:%M')}")
+                    break
+            
+            # Если особа не сегодня, ищем ближайшую
+            if days_ahead < 0:
                 days_ahead += 7
             
             next_date = now + timedelta(days=days_ahead)
@@ -652,6 +681,11 @@ class DanilBot:
                     'when': f"{day_name} {next_time.strftime('%d.%m.%Y %H:%M')}",
                     'time_left': f"{int(hours_left)}ч {int(minutes_left)}м"
                 }
+        
+        if closest:
+            print(f"🎯 Ближайшая особа: {closest['location']} в {closest['when']}")
+        else:
+            print("❌ Не найдено ближайшей особы")
         
         return closest
 
