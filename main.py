@@ -140,6 +140,10 @@ class DanilBot:
         
         # Добавляем основной чат в список оповещений
         self.alert_chats.add(self.MAIN_ALERT_CHAT_ID)
+        
+        # СИСТЕМА ДОБАВЛЕНИЯ АДМИНОВ ПО ID
+        self.waiting_for_admin_id = set()
+        self.waiting_for_remove_admin_id = set()
 
     def load_data(self, data_type: str):
         """Загрузка данных из файла"""
@@ -231,6 +235,103 @@ class DanilBot:
         except Exception as e:
             logger.error(f"Ошибка массовой отправки: {e}")
             return None
+
+    # ==================== РУЧНОЕ УПРАВЛЕНИЕ АВТОМАТИЧЕСКИМИ ФУНКЦИЯМИ ====================
+    
+    async def manual_morning_alert(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Ручной запуск утренней сводки"""
+        try:
+            if not self.is_admin(update.effective_user.id):
+                await update.message.reply_text("❌ <b>Доступ запрещен!</b>", parse_mode=ParseMode.HTML)
+                return
+                
+            await update.message.reply_text("🌅 <b>Запускаю утреннюю сводку вручную...</b>", parse_mode=ParseMode.HTML)
+            await self.send_morning_alert(context.application)
+            
+        except Exception as e:
+            logger.error(f"Ошибка ручного запуска утренней сводки: {e}")
+
+    async def manual_hack_reminder(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Ручной запуск напоминания об особе"""
+        try:
+            if not self.is_admin(update.effective_user.id):
+                await update.message.reply_text("❌ <b>Доступ запрещен!</b>", parse_mode=ParseMode.HTML)
+                return
+                
+            await update.message.reply_text("📢 <b>Запускаю напоминание об особе вручную...</b>", parse_mode=ParseMode.HTML)
+            await self.send_hack_reminder(context.application)
+            
+        except Exception as e:
+            logger.error(f"Ошибка ручного запуска напоминания: {e}")
+
+    async def manual_hack_alert(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Ручной запуск оповещения об особе"""
+        try:
+            if not self.is_admin(update.effective_user.id):
+                await update.message.reply_text("❌ <b>Доступ запрещен!</b>", parse_mode=ParseMode.HTML)
+                return
+                
+            await update.message.reply_text("🚨 <b>Запускаю оповещение об особе вручную...</b>", parse_mode=ParseMode.HTML)
+            
+            now = self.get_moscow_time()
+            for location, schedule in HACK_SCHEDULE.items():
+                if schedule["day"] == now.weekday():
+                    await self.send_hack_alert(context.application, location)
+            
+        except Exception as e:
+            logger.error(f"Ошибка ручного запуска оповещения: {e}")
+
+    async def manual_daily_kapt(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Ручной запуск ежедневных каптов"""
+        try:
+            if not self.is_admin(update.effective_user.id):
+                await update.message.reply_text("❌ <b>Доступ запрещен!</b>", parse_mode=ParseMode.HTML)
+                return
+                
+            await update.message.reply_text("🕐 <b>Запускаю ежедневные капты вручную...</b>", parse_mode=ParseMode.HTML)
+            await self.send_daily_kapt_status(context.application)
+            
+        except Exception as e:
+            logger.error(f"Ошибка ручного запуска каптов: {e}")
+
+    async def manual_night_mode(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Ручной запуск ночного режима"""
+        try:
+            if not self.is_admin(update.effective_user.id):
+                await update.message.reply_text("❌ <b>Доступ запрещен!</b>", parse_mode=ParseMode.HTML)
+                return
+                
+            await update.message.reply_text("🌙 <b>Запускаю ночной режим вручную...</b>", parse_mode=ParseMode.HTML)
+            await self.send_good_night(context.application)
+            
+        except Exception as e:
+            logger.error(f"Ошибка ручного запуска ночного режима: {e}")
+
+    async def manual_cleanup(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Ручной запуск очистки системы"""
+        try:
+            if not self.is_admin(update.effective_user.id):
+                await update.message.reply_text("❌ <b>Доступ запрещен!</b>", parse_mode=ParseMode.HTML)
+                return
+                
+            await update.message.reply_text("🧹 <b>Запускаю очистку системы вручную...</b>", parse_mode=ParseMode.HTML)
+            await self.cleanup_system(context.application)
+            
+        except Exception as e:
+            logger.error(f"Ошибка ручного запуска очистки: {e}")
+
+    async def manual_kapt_reminders(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Ручной запуск напоминаний о каптах"""
+        try:
+            if not self.is_admin(update.effective_user.id):
+                await update.message.reply_text("❌ <b>Доступ запрещен!</b>", parse_mode=ParseMode.HTML)
+                return
+                
+            await update.message.reply_text("⏰ <b>Запускаю проверку напоминаний о каптах...</b>", parse_mode=ParseMode.HTML)
+            await self.send_kapt_reminders(context.application)
+            
+        except Exception as e:
+            logger.error(f"Ошибка ручного запуска напоминаний: {e}")
 
     # ==================== ОБРАБОТКА СООБЩЕНИЙ ОТ БОТОВ ====================
     
@@ -391,8 +492,9 @@ class DanilBot:
             "└ /reload - Перезагрузить данные\n\n"
             
             "👑 <b>ROOT КОМАНДЫ:</b>\n"
-            "├ /add_admin @username - Добавить админа\n"
-            "└ /remove_admin @username - Удалить админа\n\n"
+            "├ /add_admin_id - Добавить админа по ID\n"
+            "├ /remove_admin_id - Удалить админа по ID\n"
+            "└ /admin_manual - Ручное управление функциями\n\n"
             
             "🔔 <b>АВТО-ОПОВЕЩЕНИЯ:</b>\n"
             "├ 🌅 10:00 - Утренняя сводка\n"
@@ -745,7 +847,7 @@ class DanilBot:
             logger.error(f"Ошибка в admin_panel: {e}")
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик сообщений с паролем"""
+        """Обработчик сообщений с паролем и ID админов"""
         try:
             if update.effective_chat.type == 'private':
                 return
@@ -756,6 +858,7 @@ class DanilBot:
             user_id = update.effective_user.id
             text = update.message.text.strip()
             
+            # Обработка пароля для админ-панели
             if user_id in self.waiting_for_password:
                 if text == self.ADMIN_PASSWORD:
                     self.waiting_for_password.discard(user_id)
@@ -784,6 +887,57 @@ class DanilBot:
                 else:
                     self.waiting_for_password.discard(user_id)
                     await update.message.reply_text("❌ <b>Неверный пароль!</b>", parse_mode=ParseMode.HTML)
+            
+            # Обработка добавления админа по ID
+            elif user_id in self.waiting_for_admin_id:
+                if text.isdigit():
+                    target_user_id = text
+                    
+                    # Проверяем, не root ли это
+                    if target_user_id in self.root_users:
+                        await update.message.reply_text("❌ <b>Нельзя добавить root пользователя как админа!</b>", parse_mode=ParseMode.HTML)
+                    elif target_user_id in self.admin_users:
+                        await update.message.reply_text(f"⚠️ <b>Пользователь с ID {target_user_id} уже является админом!</b>", parse_mode=ParseMode.HTML)
+                    else:
+                        self.admin_users[target_user_id] = {
+                            'username': 'added_by_id',
+                            'first_name': 'Admin by ID',
+                            'added_by': update.effective_user.first_name,
+                            'added_date': datetime.now().strftime('%d.%m.%Y %H:%M'),
+                            'added_via': 'manual_id'
+                        }
+                        self.save_data("admin_users", self.admin_users)
+                        
+                        await update.message.reply_text(
+                            f"✅ <b>Пользователь с ID {target_user_id} добавлен в админы!</b>", 
+                            parse_mode=ParseMode.HTML
+                        )
+                    
+                    self.waiting_for_admin_id.discard(user_id)
+                else:
+                    await update.message.reply_text("❌ <b>Введите корректный ID (только цифры)!</b>", parse_mode=ParseMode.HTML)
+            
+            # Обработка удаления админа по ID
+            elif user_id in self.waiting_for_remove_admin_id:
+                if text.isdigit():
+                    target_user_id = text
+                    
+                    if target_user_id not in self.admin_users:
+                        await update.message.reply_text(f"❌ <b>Пользователь с ID {target_user_id} не является админом!</b>", parse_mode=ParseMode.HTML)
+                    elif target_user_id in self.root_users:
+                        await update.message.reply_text("❌ <b>Нельзя удалить root пользователя!</b>", parse_mode=ParseMode.HTML)
+                    else:
+                        del self.admin_users[target_user_id]
+                        self.save_data("admin_users", self.admin_users)
+                        
+                        await update.message.reply_text(
+                            f"🗑️ <b>Пользователь с ID {target_user_id} удален из админов!</b>", 
+                            parse_mode=ParseMode.HTML
+                        )
+                    
+                    self.waiting_for_remove_admin_id.discard(user_id)
+                else:
+                    await update.message.reply_text("❌ <b>Введите корректный ID (только цифры)!</b>", parse_mode=ParseMode.HTML)
                     
         except Exception as e:
             logger.error(f"Ошибка в handle_message: {e}")
@@ -816,8 +970,9 @@ class DanilBot:
             if is_root_user:
                 admin_text += (
                     "\n👑 <b>ROOT КОМАНДЫ:</b>\n"
-                    "├ /add_admin @username - Добавить админа\n"
-                    "└ /remove_admin @username - Удалить админа\n"
+                    "├ /add_admin_id - Добавить админа по ID\n"
+                    "├ /remove_admin_id - Удалить админа по ID\n"
+                    "└ /admin_manual - Ручное управление функциями\n"
                 )
             
             admin_text += f"\n📢 <b>Основной чат оповещений:</b>\n└ ID: <code>{self.MAIN_ALERT_CHAT_ID}</code>"
@@ -828,8 +983,8 @@ class DanilBot:
 
     # ==================== ROOT КОМАНДЫ ====================
     
-    async def add_admin(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Добавить админа (только root)"""
+    async def add_admin_by_id(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Добавить админа по ID (только root)"""
         try:
             if update.effective_chat.type == 'private':
                 await update.message.reply_text("❌ Эта команда работает только в группах!")
@@ -840,74 +995,19 @@ class DanilBot:
                 await update.message.reply_text("❌ <b>Только root может добавлять админов!</b>", parse_mode=ParseMode.HTML)
                 return
             
-            if not context.args:
-                await update.message.reply_text(
-                    "📝 <b>Использование:</b>\n"
-                    "<code>/add_admin @username</code>", 
-                    parse_mode=ParseMode.HTML
-                )
-                return
-            
-            target = context.args[0]
-            
-            if not target.startswith('@'):
-                await update.message.reply_text(
-                    "❌ <b>Укажите @username (начинается с @)</b>", 
-                    parse_mode=ParseMode.HTML
-                )
-                return
-            
-            username = target[1:]  # Убираем @
-            
-            # Ищем пользователя по username
-            target_user_id = None
-            target_user_info = None
-            
-            # Проверяем в каптах
-            for event in self.events.values():
-                for participant in event.get('participants', []):
-                    if participant.get('username') == username:
-                        target_user_id = participant['user_id']
-                        target_user_info = participant
-                        break
-                if target_user_id:
-                    break
-            
-            if not target_user_id:
-                await update.message.reply_text(
-                    f"❌ <b>Пользователь @{username} не найден!</b>\n\n"
-                    f"💡 <i>Попросите человека написать боту любое сообщение</i>", 
-                    parse_mode=ParseMode.HTML
-                )
-                return
-            
-            if target_user_id in self.root_users:
-                await update.message.reply_text("❌ <b>Нельзя добавить root пользователя как админа!</b>", parse_mode=ParseMode.HTML)
-                return
-            
-            if target_user_id in self.admin_users:
-                await update.message.reply_text(f"⚠️ <b>Пользователь @{username} уже является админом!</b>", parse_mode=ParseMode.HTML)
-                return
-            
-            self.admin_users[target_user_id] = {
-                'username': username,
-                'first_name': target_user_info.get('first_name', 'Unknown'),
-                'added_by': update.effective_user.first_name,
-                'added_date': datetime.now().strftime('%d.%m.%Y %H:%M')
-            }
-            self.save_data("admin_users", self.admin_users)
-            
+            self.waiting_for_admin_id.add(update.effective_user.id)
             await update.message.reply_text(
-                f"✅ <b>Пользователь @{username} добавлен в админы!</b>", 
+                "👤 <b>ДОБАВЛЕНИЕ АДМИНА ПО ID</b>\n\n"
+                "📝 Введите ID пользователя (только цифры):",
                 parse_mode=ParseMode.HTML
             )
             
         except Exception as e:
-            logger.error(f"Ошибка добавления админа: {e}")
+            logger.error(f"Ошибка добавления админа по ID: {e}")
             await update.message.reply_text("❌ <b>Ошибка добавления админа!</b>", parse_mode=ParseMode.HTML)
 
-    async def remove_admin(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Удалить админа (только root)"""
+    async def remove_admin_by_id(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Удалить админа по ID (только root)"""
         try:
             if update.effective_chat.type == 'private':
                 await update.message.reply_text("❌ Эта команда работает только в группах!")
@@ -918,51 +1018,41 @@ class DanilBot:
                 await update.message.reply_text("❌ <b>Только root может удалять админов!</b>", parse_mode=ParseMode.HTML)
                 return
             
-            if not context.args:
-                await update.message.reply_text(
-                    "📝 <b>Использование:</b>\n"
-                    "<code>/remove_admin @username</code>", 
-                    parse_mode=ParseMode.HTML
-                )
-                return
-            
-            target = context.args[0]
-            
-            if not target.startswith('@'):
-                await update.message.reply_text(
-                    "❌ <b>Укажите @username (начинается с @)</b>", 
-                    parse_mode=ParseMode.HTML
-                )
-                return
-            
-            username = target[1:]
-            
-            # Ищем админа по username
-            target_user_id = None
-            for admin_id, admin_info in self.admin_users.items():
-                if admin_info.get('username') == username:
-                    target_user_id = admin_id
-                    break
-            
-            if not target_user_id:
-                await update.message.reply_text(f"❌ <b>Пользователь @{username} не является админом!</b>", parse_mode=ParseMode.HTML)
-                return
-            
-            if target_user_id in self.root_users:
-                await update.message.reply_text("❌ <b>Нельзя удалить root пользователя!</b>", parse_mode=ParseMode.HTML)
-                return
-            
-            del self.admin_users[target_user_id]
-            self.save_data("admin_users", self.admin_users)
-            
+            self.waiting_for_remove_admin_id.add(update.effective_user.id)
             await update.message.reply_text(
-                f"🗑️ <b>Пользователь @{username} удален из админов!</b>", 
+                "👤 <b>УДАЛЕНИЕ АДМИНА ПО ID</b>\n\n"
+                "📝 Введите ID пользователя для удаления (только цифры):",
                 parse_mode=ParseMode.HTML
             )
             
         except Exception as e:
-            logger.error(f"Ошибка удаления админа: {e}")
+            logger.error(f"Ошибка удаления админа по ID: {e}")
             await update.message.reply_text("❌ <b>Ошибка удаления админа!</b>", parse_mode=ParseMode.HTML)
+
+    async def admin_manual_control(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Ручное управление автоматическими функциями"""
+        try:
+            if not self.is_root(update.effective_user.id):
+                await update.message.reply_text("❌ <b>Только root может управлять функциями вручную!</b>", parse_mode=ParseMode.HTML)
+                return
+            
+            manual_text = (
+                "🎮 <b>РУЧНОЕ УПРАВЛЕНИЕ ФУНКЦИЯМИ</b>\n\n"
+                "🕐 <b>АВТОМАТИЧЕСКИЕ ФУНКЦИИ:</b>\n"
+                "├ /manual_morning - Утренняя сводка\n"
+                "├ /manual_reminder - Напоминание об особе\n"
+                "├ /manual_alert - Оповещение об особе\n"
+                "├ /manual_daily - Ежедневные капты\n"
+                "├ /manual_night - Ночной режим\n"
+                "├ /manual_cleanup - Очистка системы\n"
+                "└ /manual_kapt_remind - Напоминания о каптах\n\n"
+                "💡 <i>Эти команды запускают функции немедленно</i>"
+            )
+            
+            await update.message.reply_text(manual_text, parse_mode=ParseMode.HTML)
+            
+        except Exception as e:
+            logger.error(f"Ошибка в admin_manual_control: {e}")
 
     # ==================== АДМИН КОМАНДЫ ====================
     
@@ -1217,7 +1307,7 @@ class DanilBot:
                 "🔔 <b>ТЕСТОВОЕ ОПОВЕЩЕНИЕ</b>\n\n"
                 "✅ <b>Система работает корректно</b>\n"
                 "📡 <b>Все каналы связи активны</b>\n\n"
-                "💡 <i>Это тестовое сообщение</i>"
+                "💡 <i>Это тестовое сообствие</i>"
             )
             
             await update.message.reply_text(test_text, parse_mode=ParseMode.HTML)
@@ -1769,8 +1859,18 @@ class DanilBot:
         application.add_handler(CommandHandler("reload", self.reload))
         
         # Root команды
-        application.add_handler(CommandHandler("add_admin", self.add_admin))
-        application.add_handler(CommandHandler("remove_admin", self.remove_admin))
+        application.add_handler(CommandHandler("add_admin_id", self.add_admin_by_id))
+        application.add_handler(CommandHandler("remove_admin_id", self.remove_admin_by_id))
+        application.add_handler(CommandHandler("admin_manual", self.admin_manual_control))
+        
+        # Ручное управление функциями
+        application.add_handler(CommandHandler("manual_morning", self.manual_morning_alert))
+        application.add_handler(CommandHandler("manual_reminder", self.manual_hack_reminder))
+        application.add_handler(CommandHandler("manual_alert", self.manual_hack_alert))
+        application.add_handler(CommandHandler("manual_daily", self.manual_daily_kapt))
+        application.add_handler(CommandHandler("manual_night", self.manual_night_mode))
+        application.add_handler(CommandHandler("manual_cleanup", self.manual_cleanup))
+        application.add_handler(CommandHandler("manual_kapt_remind", self.manual_kapt_reminders))
         
         # Обработчик сообщений от других ботов
         application.add_handler(MessageHandler(
@@ -1811,6 +1911,7 @@ class DanilBot:
         print("🤖 МЕЖБОТОВОЕ ВЗАИМОДЕЙСТВИЕ: Активировано")
         print("🔔 АВТО-ОПОВЕЩЕНИЯ: 10:00, 17:30, 18:00, 14:00, 23:00, 06:00")
         print("⏰ НАПОМИНАНИЯ О КАПТАХ: За 30 минут до начала")
+        print("🎮 РУЧНОЕ УПРАВЛЕНИЕ: Активировано")
         print("🔄 РЕЖИМ ПРОВЕРКИ: Каждую минуту")
         print("🔐 ПАРОЛЬ АДМИНА: 24680")
         print("👑 ПАРОЛЬ ROOT: 1508")
